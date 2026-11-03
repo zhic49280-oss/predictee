@@ -13,12 +13,19 @@ export interface OracleResolutionData {
   attestationHash: string;
   enclaveMeasurement: string;
   evidenceDigest: string;
+  signerAddress?: string;
+  activeSignerAddress?: string;
+  signedText?: string;
+  ecdsaSignature?: string;
+  verificationMode?: string;
   resolver: string;
   resolvedAt: string;
   hardware: string;
   model: string;
   attestationQuoteB64: string;
   zeroKnowledgeGuarantee: string;
+  rationale?: string;
+  evidenceSources?: EvidenceSource[];
 }
 
 export interface OracleRequestItem {
@@ -40,6 +47,7 @@ export interface OracleRequestItem {
 export interface EnclaveNodeItem {
   id: string;
   measurement: string;
+  signingAddress?: string;
   label: string;
   hardware: string;
   model: string;
@@ -79,8 +87,13 @@ export interface Market {
     rationale: string;
     tee_attestation: {
       is_tee_verified: boolean;
+      verification_mode?: string;
       hardware: string;
       enclave_measurement: string;
+      attested_signing_address?: string;
+      signer_address?: string;
+      signed_text?: string;
+      ecdsa_signature?: string;
       attestation_quote_b64: string;
       attestation_hash: string;
       model: string;

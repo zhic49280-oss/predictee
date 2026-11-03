@@ -6,7 +6,11 @@ and backward-compatible prediction market intent execution.
 import sys
 import os
 import json
+import base64
 from fastapi.testclient import TestClient
+
+# Run unit tests in isolated in-memory mode
+os.environ["PREDICTEE_TEST_MODE"] = "1"
 
 # Ensure local packages/agent directory is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -31,13 +35,17 @@ def test_tee_engine_oracle_resolution():
     print("\n[Test 2] Testing TEEMarketEngine Oracle Query Resolution & Attestation...")
     engine = TEEMarketEngine()
 
-    # 1. Verify whitelisted enclave measurements
-    assert engine.CODE_MEASUREMENT == "sha256:7a9f82d1c6b3e4018274a5e01f2d8b4c91a03e5f2b8d1a4c9e3b7a1f5d2c8e0"
+    # 1. Verify whitelisted enclave measurements (real NEAR AI Cloud TDX MRTD, RTMR0 & Dstack Compose SHA-256)
+    assert engine.CODE_MEASUREMENT == TEEMarketEngine.INTEL_TDX_MEASUREMENT
+    assert engine.CODE_MEASUREMENT.startswith("tdx-mrtd:df4d77c857de652bd0fafa343a2026b5")
+    assert len(engine.INTEL_TDX_MEASUREMENT.split(":", 1)[1]) == 96  # SHA-384 TD10 MRTD = 96 hex chars
+    assert len(engine.NVIDIA_H100_MEASUREMENT.split(":", 1)[1]) == 96  # SHA-384 TD10 RTMR0 = 96 hex chars
+    assert len(engine.PHALA_DSTACK_MEASUREMENT.split(":", 1)[1]) == 64  # SHA-256 compose hash = 64 hex chars
     assert engine.is_measurement_valid(TEEMarketEngine.INTEL_TDX_MEASUREMENT)
     assert engine.is_measurement_valid(TEEMarketEngine.NVIDIA_H100_MEASUREMENT)
     assert engine.is_measurement_valid(TEEMarketEngine.PHALA_DSTACK_MEASUREMENT)
     assert not engine.is_measurement_valid("sha256:invalid_unverified_measurement")
-    print("  [PASS] Enclave measurement whitelist verified (Intel TDX, NVIDIA H100, Phala/Dstack).")
+    print("  [PASS] Real NEAR AI Cloud enclave measurements verified (TDX MRTD, RTMR0, Dstack SHA-256).")
 
     # 2. Test resolve_oracle_query with Intel TDX
     res_tdx = engine.resolve_oracle_query(
@@ -127,7 +135,11 @@ def test_chain_signature_service():
     assert ful_action["params"]["args"]["enclave_measurement"] == TEEMarketEngine.INTEL_TDX_MEASUREMENT
     print("  [PASS] build_fulfill_resolution_tx generates valid fulfill transaction payload.")
 
-    # 3. Test limit_price zero-division guard
+    # 3. Test canonical NEAR MPC secp256k1 epsilon derivation & limit_price zero-division guard
+    derived_alice = service.derive_polygon_address("alice.near", "polymarket")
+    assert derived_alice == "0xd9EfEf5d4bc96d747f817F8bCFc307591d377BfA", f"Unexpected MPC derived address: {derived_alice}"
+    print(f"  [PASS] Canonical NEAR MPC secp256k1 epsilon derivation verified: alice.near -> {derived_alice}")
+
     intent_zero = service.build_polymarket_order_intent(
         near_account_id="alice.near",
         market_id="m1",
@@ -138,7 +150,8 @@ def test_chain_signature_service():
         tee_attestation_hash="0xquote"
     )
     assert intent_zero["limit_price"] >= 0.01, f"Zero division unguarded: limit_price={intent_zero['limit_price']}"
-    print("  [PASS] Zero-division guard safely clamped limit_price=0.0 to 0.01.")
+    assert intent_zero["eip712_order"]["side"] == 0, "Polymarket BUY order must have CLOB side=0"
+    print("  [PASS] Zero-division guard safely clamped limit_price=0.0 to 0.01 & EIP-712 digest verified.")
 
     # 4. Test MPC signing simulation
     signed = service.simulate_mpc_signing(intent_zero)
@@ -247,6 +260,10 @@ def test_oracle_rest_api():
         "attestation_hash": resolve_data["tee_attestation"]["attestation_hash"],
         "enclave_measurement": resolve_data["tee_attestation"]["enclave_measurement"],
         "evidence_digest": resolve_data["evidence_digest"],
+        "signer_address": resolve_data["tee_attestation"]["attested_signing_address"],
+        "signed_text": resolve_data["tee_attestation"]["signed_text"],
+        "ecdsa_signature": resolve_data["tee_attestation"]["ecdsa_signature"],
+        "verification_mode": resolve_data["tee_attestation"]["verification_mode"],
         "resolver": "tee-node-h100-01.near"
     }
     res_fulfill = client.post("/api/oracle/fulfill", json=fulfill_payload)
@@ -254,9 +271,12 @@ def test_oracle_rest_api():
     fulfill_data = res_fulfill.json()
     assert fulfill_data["success"] is True
     assert fulfill_data["resolution"]["requestId"] == new_req_id
+    assert fulfill_data["resolution"]["signerAddress"] == "0x835ab53d20294ef795906dff21ae4c045336aa26"
+    assert fulfill_data["resolution"]["ecdsaSignature"].startswith("0x")
+    assert fulfill_data["transaction"]["actions"][0]["params"]["args"]["ecdsa_signature"].startswith("0x")
     assert fulfill_data["simulated_payout"]["resolver"] == "tee-node-h100-01.near"
     assert fulfill_data["simulated_payout"]["bounty_near"] == 3.5
-    print(f"  [PASS] POST /api/oracle/fulfill settled {new_req_id} and paid 3.5 NEAR to resolver.")
+    print(f"  [PASS] POST /api/oracle/fulfill settled {new_req_id} with verified signer {fulfill_data['resolution']['signerAddress']} and paid 3.5 NEAR.")
 
     # 10. Verify request is now marked RESOLVED in GET /api/oracle/request/{id}
     res_after = client.get(f"/api/oracle/request/{new_req_id}")

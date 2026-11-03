@@ -1,7 +1,7 @@
 {
   "name": "predictee",
   "version": "1.0.0",
-  "description": "PredicTEE - Privacy-Preserving AI Agent for Cross-Chain Prediction Markets powered by NEAR AI (TEE) & Chain Signatures",
+  "description": "PredicTEE - Verifiable TEE AI Oracle & Cross-Chain Prediction Execution powered by NEAR AI Cloud (Intel TDX / NVIDIA H100) & NEAR Chain Signatures (v1.signer)",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -12,6 +12,7 @@
     "contracts:build": "npm --prefix packages/contracts run build",
     "contracts:test": "npm --prefix packages/contracts run test",
     "agent:test": "python packages/agent/test_agent.py",
+    "verify:tee": "python packages/agent/verify_near_ai_tee.py",
     "test": "npm run contracts:test && python packages/agent/test_agent.py",
     "agent": "python packages/agent/agent.py"
   },

@@ -1,7 +1,7 @@
 # 🎬 PredicTEE — Judge Demo Guide & Pitch Script
 
 > **NEAR Hackathon 2026**  
-> **Tracks:** Track 1: Privacy & Private AI (Primary) · Track 2: Agent Economy  
+> **Tracks:** `privacy` (Privacy & Private AI — Primary) · `agents` (Agent Economy) · `defi` (Unstoppable DeFi)  
 > **Project:** PredicTEE — Verifiable TEE AI Oracle & Omnichain Execution on NEAR
 
 ---
@@ -15,9 +15,9 @@ Prediction markets are the fastest-growing sector in crypto, but they are crippl
 - **Naive Web2 AI Oracles** are centralized blackboxes: node runners or cloud providers (AWS/Azure) can inspect prompts, frontrun trades, or tamper with weights.
 
 **PredicTEE** solves this with the world's first **Verifiable TEE AI Oracle on NEAR**:
-1. AI multi-source synthesis runs inside **Intel TDX / NVIDIA Confidential Computing** enclaves.
-2. Every resolution outputs an immutable **cryptographic hardware attestation (Quote + PCR-0 measurement)** verified directly by the NEAR Smart Contract.
-3. Users and dApps can resolve subjective markets in **seconds** and execute 1-click cross-chain trades on **Polymarket** using **NEAR Chain Signatures (MPC)** without bridging or gas tokens.
+1. AI multi-source synthesis runs inside **NEAR AI Cloud Intel TDX TD10 & NVIDIA H100 Confidential Computing** enclaves (`z-ai/glm-5.3-flash`, `Qwen/Qwen3.8-27B`).
+2. Every resolution binds the enclave's **TDX TD10 `mr_td` / `rt_mr0` measurement** and **ECDSA `signing_address`**, verified directly on-chain by the NEAR Smart Contract via `near.ecrecover`.
+3. Users and dApps can resolve subjective markets in **seconds** and prepare 1-click cross-chain orders on **Polymarket** using **NEAR Chain Signatures (`v1.signer`)** canonical `secp256k1` epsilon derivation.
 
 ---
 
@@ -99,61 +99,65 @@ This performs an environment check, gives you the option to run the contract tes
 
 ---
 
-### Step 2: Verify Smart Contract Verification Tests
-Run the standalone simulation suite to prove on-chain hardware whitelist enforcement:
+### Step 2: Verify Live NEAR AI Cloud TEE Attestation & Smart Contract Suite
+Run the keyless live hardware attestation verifier and the 8-suite contract simulation:
 ```bash
-npm run contracts:test
+npm run verify:tee
+npm test
 ```
 **What Judges See:**
-- **Test 1:** Initialized with 3 verified enclaves (Intel TDX, NVIDIA H100 CC, Phala Dstack).
-- **Test 2:** Whitelist access control (non-owners cannot register rogue enclaves).
-- **Test 3:** Escrowed request creation with yoctoNEAR bounty.
-- **Test 4:** **Cryptographic rejection of unverified TEE measurements** (`assert(is_enclave_verified)`).
-- **Test 5:** Legitimate fulfillment, state transition to `RESOLVED`, and resolver bounty payout.
-- **Test 6:** Cancellation & refund safeguards.
-- **Test 7:** View queries & global statistics.
-- **Test 8:** NEP-297 standard event audit (`oracle_request_created`, `oracle_request_fulfilled`).
+- **Live Hardware Attestation (`npm run verify:tee`):** Queries `https://cloud-api.near.ai/v1/attestation/report`, verifies the Intel TDX TD10 quote via `dcap-qvl` (`UpToDate`), confirms `report_data[0..32]` binds `0x3b753b4406613c5e70ae640508632b600424fa0c` and `report_data[32..64]` embeds the fresh 32-byte `nonce`, and verifies NVIDIA H100 GPU evidence via NVIDIA NRAS (`True`).
+- **Smart Contract Suite (`npm test`):**
+  - **Test 1:** Initialized with 3 verified NEAR AI Cloud enclaves (`tdx-mrtd:df4d77c8...`, `tdx-rtmr0:bc122d14...`, `sha256:617be591...`) and their attested ECDSA `signingAddress` values.
+  - **Test 2:** Whitelist access control (non-owners cannot register rogue enclaves).
+  - **Test 3:** Escrowed request creation with yoctoNEAR bounty and storage staking accounting.
+  - **Test 4:** **Cryptographic rejection of unverified measurements, public measurement spoofing without signature, forged ECDSA keys, and relayer outcome tampering** via `near.ecrecover`.
+  - **Test 5:** Legitimate fulfillment, on-chain `near.ecrecover` signer recovery, state transition to `RESOLVED`, resolver bounty payout, and signature replay protection.
+  - **Test 6:** Cancellation & refund safeguards.
+  - **Test 7:** Bounded pagination view queries & global statistics.
+  - **Test 8:** Cross-chain intent registry & NEP-297 standard event audit (`oracle_request_created`, `oracle_request_fulfilled`).
 
 ---
 
-### Step 3: Explore Live Prediction Feeds & Alpha Divergence
+### Step 3: Explore Live Oracle Inquiries & Prediction Markets
 Navigate to `http://localhost:5173`.
-1. Observe the **Global Protocol Stats**:
-   - Tracked Polymarket Volume: `$57,320,000`
-   - Alpha Arbitrage Gap: `+14.0% EV`
-   - Hardware Enclaves: `Intel TDX Verified`
-   - Chain Signatures: `< 3.0s Settlement`
-2. Examine the market cards:
-   - **Market Implied Odds** (gray bar) vs. **Confidential AI True Probability** (emerald gradient bar).
-   - Dynamic **Alpha Divergence (+EV)** calculation highlighting mispriced bets.
-   - **TEE Reasoning Digest** summarizing evidence feeds synthesized inside the enclave.
+1. Observe the **Real-Time Oracle Stats Bar** computed dynamically from active inquiries and verified enclaves:
+   - Total Inquiries (`6` seeded, `3` pending resolution)
+   - Resolved Truths (`100% On-Chain ecrecover`)
+   - Active Bounties (`9.5 NEAR` paid)
+   - Verified Enclaves (`3 Nodes` — Intel TDX TD10 + NVIDIA H100 CC)
+2. Switch to **"⚡ Prediction Markets & Alpha"** to examine live Polymarket events:
+   - **Polymarket Odds (Market Implied)** vs. **NEAR AI True Prob (Confidential TEE)**.
+   - Dynamic **Alpha Divergence (+EV)** calculation highlighting mispriced outcomes.
+   - **TEE Reasoning Digest** summarizing evidence feeds evaluated for each market.
 
 ---
 
-### Step 4: Inspect the Hardware Cryptographic Quote
-1. Click **"Inspect TEE Quote"** on any market card (e.g. *DeepSeek-V4 Benchmark* or *Fed Rate Decision*).
+### Step 4: Trigger TEE Resolution & Inspect the Hardware Cryptographic Quote
+1. On **"🔮 Live Oracle Explorer"**, locate pending request `req-3` and click **"✨ Trigger TEE Resolution"**, then click **"Inspect TEE Proof"**.
 2. The **Hardware Cryptographic Attestation Modal** opens:
-   - **Execution Hardware:** `Intel TDX / NVIDIA H100 Confidential GPU`
-   - **Open-Weight Model:** `deepseek-ai/DeepSeek-V3-Confidential`
-   - **PCR-0 Enclave Measurement:** `sha256:7a9f82d1c6b3e4018274a5e01f2d8b4c91a03e5f2b8d1a4c9e3b7a1f5d2c8e0`
-   - **Attestation Hash:** Immutable hash submitted to NEAR L1.
-   - **Base64 Signed Hardware Quote:** Raw Intel TDX cryptographic payload.
-   - **Zero-Knowledge Guarantee:** Proof that no prompts or weights were leaked to disk.
+   - **Execution Hardware:** `Intel® Xeon® Platinum 8592+ (Emerald Rapids TDX TD10)`
+   - **Model Inference Engine:** `z-ai/glm-5.3-flash` / `Qwen/Qwen3.8-27B`
+   - **Enclave Measurement (TDX TD10 MRTD / RTMR0):** `tdx-mrtd:df4d77c857de652bd0fafa343a2026b51071ee03773d076d283abf1a7d36ff91ffa279ee4a617ac664f7e2a2c8d5891b`
+   - **TEE `signing_address` (TD10 Bound):** `0x3b753b4406613c5e70ae640508632b600424fa0c`
+   - **EIP-191 ECDSA Signature (`ecrecover`):** 65-byte secp256k1 signature over the resolution digest.
+   - **Attestation Hash:** Immutable digest emitted in the NEP-297 contract event.
+   - **Base64 Signed Hardware Quote:** Full JSON/TDX quote payload.
 
 ---
 
-### Step 5: Execute 1-Click Cross-Chain Order via NEAR MPC
-1. Click **"Bet YES"** or **"Bet NO"** on a high-alpha market.
+### Step 5: Prepare 1-Click Cross-Chain Order via NEAR MPC
+1. Switch to **"⚡ Prediction Markets & Alpha"** and click **"Bet YES"** or **"Bet NO"** on any market.
 2. The **NEAR Chain Signatures Modal** appears:
    - Source Account: `alice.near`
-   - Target Market: Displays market question and selected outcome.
-   - Derived EVM Address: `0x7a9f82d1c6b3e4018274a5e01f2d8b4c91a03e5f` (derived mathematically from `alice.near`).
+   - Derived Polygon Address: `0xd9EfEf5d4bc96d747f817F8bCFc307591d377BfA` (derived via `near-mpc-recovery v0.1.0 epsilon derivation:alice.near,polymarket` from `v1.signer`).
    - MPC Contract: `v1.signer`
 3. Select an amount (e.g. `$50`) and click **"Confirm & Sign via NEAR MPC"**.
-4. The spinner activates as NEAR MPC nodes compute the threshold signature (~2.8s).
-5. Success screen confirms:
+4. Confirmation screen displays:
    - **Status:** `MPC_SIGNED_EXECUTED`
-   - **Polygon Tx Hash:** Cryptographic EIP-712 transaction hash.
+   - **Derived Polygon Address:** `0xd9EfEf5d4bc96d747f817F8bCFc307591d377BfA`
+   - **EIP-712 Order Digest (`chainId=137`):** Keccak-256 digest for Polymarket CTF Exchange (`0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E`).
+   - **NEAR MPC (`v1.signer`) Sign Request Payload:** Ready-to-broadcast `sign` payload with 32-byte digest array and derivation path `"polymarket"`.
    - **Direct link to Polygonscan Explorer**.
 
 ---
