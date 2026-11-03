@@ -1,0 +1,25 @@
+{
+  "name": "predictee",
+  "version": "1.0.0",
+  "description": "PredicTEE - Privacy-Preserving AI Agent for Cross-Chain Prediction Markets powered by NEAR AI (TEE) & Chain Signatures",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:frontend": "npm --prefix packages/frontend run dev",
+    "build:frontend": "npm --prefix packages/frontend run build",
+    "agent": "python packages/agent/agent.py"
+  },
+  "keywords": [
+    "near",
+    "near-ai",
+    "chain-signatures",
+    "polymarket",
+    "prediction-market",
+    "tee",
+    "confidential-computing"
+  ],
+  "author": "PredicTEE Team",
+  "license": "MIT"
+}
