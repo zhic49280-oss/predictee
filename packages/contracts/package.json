@@ -1,12 +1,21 @@
 {
   "name": "predictee-contracts",
   "version": "1.0.0",
-  "description": "NEAR Smart Contract for PredicTEE Intent Registry & TEE Verification",
+  "description": "NEAR Smart Contract for PredicTEE Verifiable TEE AI Oracle & Intent Registry",
   "main": "build/index.js",
+  "type": "module",
   "scripts": {
-    "build": "near-sdk-js build src/index.ts build/predictee.wasm"
+    "build": "tsc -p tsconfig.json",
+    "build:wasm": "near-sdk-js build src/index.ts build/predictee.wasm",
+    "test": "node test/simulate.js",
+    "simulate": "node test/simulate.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "near-sdk-js": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
   }
 }

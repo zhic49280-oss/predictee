@@ -9,6 +9,10 @@
   "scripts": {
     "dev:frontend": "npm --prefix packages/frontend run dev",
     "build:frontend": "npm --prefix packages/frontend run build",
+    "contracts:build": "npm --prefix packages/contracts run build",
+    "contracts:test": "npm --prefix packages/contracts run test",
+    "agent:test": "python packages/agent/test_agent.py",
+    "test": "npm run contracts:test && python packages/agent/test_agent.py",
     "agent": "python packages/agent/agent.py"
   },
   "keywords": [
@@ -21,5 +25,10 @@
     "confidential-computing"
   ],
   "author": "PredicTEE Team",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^7.0.2"
+  }
 }
