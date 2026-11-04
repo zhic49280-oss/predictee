@@ -19,6 +19,8 @@
 | ![Live Oracle Explorer](./docs/screenshots/01-oracle-explorer-live-tee.png) | ![TEE Hardware Quote Inspector](./docs/screenshots/02-tee-hardware-quote-inspector.png) |
 | **Polymarket Alpha & Arbitrage Engine** | **NEAR Chain Signatures (`v1.signer`) 1-Click Order** |
 | ![Polymarket Alpha Engine](./docs/screenshots/03-polymarket-alpha-near-mpc.png) | ![NEAR MPC 1-Click Order](./docs/screenshots/05-near-mpc-1click-order.png) |
+| **Verified TEE Hardware Whitelist Registry** | **⚙️ Node Operator Admin & Model Routing Console** |
+| ![Verified TEE Hardware Registry](./docs/screenshots/04-tee-enclave-registry.png) | ![Operator Admin Console](./docs/screenshots/06-operator-admin-console.png) |
 
 ---
 
@@ -28,20 +30,20 @@
 
 Judges and automated evaluation agents (**Claude Code** & **Codex**) can verify every layer of PredicTEE out of the box **without needing a secret API key**:
 
-### Step 0: Prerequisites, Dependency Installation & Optional `NEAR_AI_API_KEY` Setup
+### Step 0: Prerequisites, Dependency Installation & Operator Backend `.env` Setup
 - **Prerequisites:** Node.js 18+ and Python 3.10+
 - **Do (Install Dependencies):**
   ```bash
   npm install
   pip install -r packages/agent/requirements.txt
   ```
-- **Do (Optional — Enable Live Authenticated NEAR AI Cloud TEE Inference & Signing):**
+- **Do (Server Operator — Enable Live Authenticated NEAR AI Cloud TEE Inference & Signing):**
   ```bash
   cp packages/agent/.env.example packages/agent/.env
-  # Edit packages/agent/.env and set:
+  # Edit packages/agent/.env on the backend server and set:
   # NEAR_AI_API_KEY=sk-... (from https://cloud.near.ai or https://nearbuilders.org/dashboard)
   ```
-  *(You can also paste your `NEAR_AI_API_KEY` at runtime in the web dashboard by clicking the top-right **"🔑 Configure NEAR AI Key"** badge, or via `POST /api/config/ai-key`. If no key is set, PredicTEE still performs **100% live keyless hardware attestation** against `cloud-api.near.ai/v1/attestation/report` and uses a clearly labeled deterministic sandbox fallback for chat completions.)*
+  *(Public users never need to enter an API key in the frontend. Node operators can switch active confidential models (`z-ai/glm-5.3-flash`, `Qwen/Qwen3.8-27B`, `Qwen/Qwen3.6-35B-A3B-FP8`), rotate the server `.env` key, and manage Oracle inquiries directly in the **⚙️ Operator Admin** console tab or via `/api/admin/*`.)*
 - **See:** Installs `@noble/curves`, `@noble/hashes`, `near-sdk-js`, `dcap-qvl` (Intel DCAP quote verifier), `py_ecc` (`secp256k1`), `eth-account`, and `fastapi`.
 
 ### Step 1: Verify Live NEAR AI Cloud TEE Hardware Attestation (Keyless)

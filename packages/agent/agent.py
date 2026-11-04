@@ -1083,6 +1083,173 @@ def reset_oracle_demo_state():
         "pendingRequests": [k for k, v in REQUESTS_DB.items() if v["status"] == "PENDING"]
     }
 
+# ==========================================
+# Operator Admin Backend Endpoints (/api/admin/*)
+# ==========================================
+
+class AdminModelConfigPayload(BaseModel):
+    model: Optional[str] = Field(default=None, description="Active NEAR AI Cloud TEE model identifier")
+    api_key: Optional[str] = Field(default=None, description="Optional new NEAR AI Cloud API key (leave empty to keep existing server key)")
+    base_url: Optional[str] = Field(default=None, description="Optional NEAR AI Cloud base URL")
+    persist_to_env: bool = Field(default=True, description="Whether to persist model/key updates to server .env")
+
+class AdminToggleEnclavePayload(BaseModel):
+    measurement: str = Field(..., description="Enclave measurement ID to toggle")
+    active: Optional[bool] = Field(default=None, description="Explicit active state or None to toggle")
+
+def _update_server_env_file(updates: Dict[str, str]):
+    """Safely updates specific keys in packages/agent/.env without reading/logging existing secret values."""
+    if os.getenv("PREDICTEE_TEST_MODE") == "1":
+        return
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    lines: List[str] = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    updated_keys = set()
+    new_lines: List[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            new_lines.append(line)
+            continue
+        k = stripped.split("=", 1)[0].strip()
+        if k in updates and updates[k] is not None:
+            new_lines.append(f"{k}={updates[k]}")
+            updated_keys.add(k)
+        else:
+            new_lines.append(line)
+    for k, v in updates.items():
+        if k not in updated_keys and v is not None:
+            new_lines.append(f"{k}={v}")
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(new_lines) + "\n")
+
+@app.get("/api/admin/overview")
+def admin_overview():
+    """Returns full node operator telemetry, model catalog, masked server key status, and oracle metrics."""
+    has_key = bool(tee_engine.near_ai_api_key)
+    model_catalog = [
+        {
+            "id": "z-ai/glm-5.3-flash",
+            "name": "GLM-5.3-Flash (Confidential Reasoning TEE)",
+            "provider": "NEAR AI Cloud / Zhipu AI",
+            "hardware": "Intel® Xeon® Platinum 8592+ (Emerald Rapids TDX TD10)",
+            "measurement": TEEMarketEngine.INTEL_TDX_MEASUREMENT,
+            "signingAddress": TEEMarketEngine.VERIFIED_SIGNING_ADDRESSES[TEEMarketEngine.INTEL_TDX_MEASUREMENT],
+            "latency": "~6.5s (Chain-of-Thought + Hardware ECDSA)",
+            "recommendedFor": "Fast Subjective Oracle Resolution & Real-Time Polymarket Alpha"
+        },
+        {
+            "id": "Qwen/Qwen3.8-27B",
+            "name": "Qwen 3.8 27B (Dense Confidential GPU TEE)",
+            "provider": "NEAR AI Cloud / Qwen",
+            "hardware": "NVIDIA H100 SXM5 80GB (NRAS v3 + Intel TDX RTMR0)",
+            "measurement": TEEMarketEngine.NVIDIA_H100_MEASUREMENT,
+            "signingAddress": TEEMarketEngine.VERIFIED_SIGNING_ADDRESSES[TEEMarketEngine.NVIDIA_H100_MEASUREMENT],
+            "latency": "~9.2s (Dense 27B Multi-Source Synthesis)",
+            "recommendedFor": "Complex Macroeconomic, Regulatory & Multi-Condition Inquiries"
+        },
+        {
+            "id": "Qwen/Qwen3.6-35B-A3B-FP8",
+            "name": "Qwen 3.6 35B-A3B FP8 (MoE High-Throughput TEE)",
+            "provider": "NEAR AI Cloud / Qwen",
+            "hardware": "NVIDIA H100 SXM5 80GB FP8 Confidential Enclave",
+            "measurement": TEEMarketEngine.NVIDIA_H100_MEASUREMENT,
+            "signingAddress": TEEMarketEngine.VERIFIED_SIGNING_ADDRESSES[TEEMarketEngine.NVIDIA_H100_MEASUREMENT],
+            "latency": "~5.8s (Sparse 3B Active MoE)",
+            "recommendedFor": "High-Frequency Orderbook Scanning & Batch Market Evaluation"
+        }
+    ]
+    return {
+        "ai_engine": {
+            "has_api_key": has_key,
+            "key_status_label": "sk-•••••••••••••••• (Server .env Active)" if has_key else "Not Configured (Keyless Mode)",
+            "active_model": tee_engine.near_ai_model,
+            "base_url": tee_engine.near_ai_base_url,
+            "verification_mode": "LIVE_NEAR_AI_CLOUD_TEE" if has_key else "KEYLESS_ATTESTATION_SANDBOX_DEMO",
+            "cached_live_inferences": len(tee_engine._live_ai_cache),
+            "model_catalog": model_catalog
+        },
+        "stats": get_oracle_stats(),
+        "enclaves": list_enclaves()["enclaves"]
+    }
+
+@app.post("/api/admin/model")
+def admin_update_model_and_key(
+    payload: AdminModelConfigPayload,
+    authorization: Optional[str] = Header(default=None),
+    x_admin_token: Optional[str] = Header(default=None)
+):
+    """
+    Operator endpoint to switch the active NEAR AI Cloud TEE model (`z-ai/glm-5.3-flash`, `Qwen/Qwen3.8-27B`, etc.)
+    or rotate the backend `NEAR_AI_API_KEY` without ever exposing existing keys to the client.
+    """
+    admin_secret = os.getenv("PREDICTEE_ADMIN_TOKEN", "").strip()
+    if admin_secret:
+        provided = (x_admin_token or "").strip() or (authorization or "").removeprefix("Bearer ").strip()
+        if provided != admin_secret:
+            raise HTTPException(status_code=401, detail="Unauthorized: valid admin token required")
+
+    env_updates: Dict[str, str] = {}
+    if payload.base_url and payload.base_url.strip():
+        try:
+            tee_engine.near_ai_base_url = validate_near_ai_base_url(payload.base_url.strip())
+            env_updates["NEAR_AI_BASE_URL"] = tee_engine.near_ai_base_url
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    if payload.model and payload.model.strip():
+        clean_model = payload.model.strip()
+        if clean_model not in tee_engine.supported_models:
+            raise HTTPException(status_code=400, detail=f"Unsupported TEE model: {clean_model}")
+        tee_engine.near_ai_model = clean_model
+        env_updates["NEAR_AI_MODEL"] = clean_model
+
+    if payload.api_key is not None and payload.api_key.strip():
+        tee_engine.near_ai_api_key = payload.api_key.strip()
+        env_updates["NEAR_AI_API_KEY"] = tee_engine.near_ai_api_key
+
+    if payload.persist_to_env and env_updates:
+        _update_server_env_file(env_updates)
+
+    return admin_overview()
+
+@app.post("/api/admin/requests/{request_id}/reopen")
+def admin_reopen_request(request_id: str):
+    """Allows the operator to reopen a resolved inquiry back to PENDING so it can be re-resolved with an updated TEE model."""
+    with STATE_LOCK:
+        if request_id not in REQUESTS_DB:
+            raise HTTPException(status_code=404, detail=f"Request {request_id} not found")
+        REQUESTS_DB[request_id]["status"] = "PENDING"
+        REQUESTS_DB[request_id]["resolvedAt"] = None
+        if request_id in RESOLUTIONS_DB:
+            del RESOLUTIONS_DB[request_id]
+        save_persisted_state()
+    return {"reopened": True, "request_id": request_id}
+
+@app.delete("/api/admin/requests/{request_id}")
+def admin_delete_request(request_id: str):
+    """Allows the operator to delete an inquiry (e.g., removing test/spam requests)."""
+    with STATE_LOCK:
+        if request_id not in REQUESTS_DB:
+            raise HTTPException(status_code=404, detail=f"Request {request_id} not found")
+        del REQUESTS_DB[request_id]
+        if request_id in RESOLUTIONS_DB:
+            del RESOLUTIONS_DB[request_id]
+        save_persisted_state()
+    return {"deleted": True, "request_id": request_id, "remaining": len(REQUESTS_DB)}
+
+@app.post("/api/admin/enclaves/toggle")
+def admin_toggle_enclave(payload: AdminToggleEnclavePayload):
+    """Allows the operator to activate or pause a whitelisted TEE enclave measurement."""
+    with STATE_LOCK:
+        if payload.measurement not in ENCLAVES_DB:
+            raise HTTPException(status_code=404, detail="Enclave measurement not found")
+        current = ENCLAVES_DB[payload.measurement]["active"]
+        ENCLAVES_DB[payload.measurement]["active"] = payload.active if payload.active is not None else (not current)
+    return {"enclaves": list_enclaves()["enclaves"]}
+
 if __name__ == "__main__":
     uvicorn.run(
         "agent:app",

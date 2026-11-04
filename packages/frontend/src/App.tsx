@@ -45,8 +45,69 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:800
 
 export default function App() {
   // Navigation & Tabs
-  const [activeTab, setActiveTab] = useState<'oracle' | 'markets' | 'hardware'>('oracle');
+  const [activeTab, setActiveTab] = useState<'oracle' | 'markets' | 'hardware' | 'admin'>('oracle');
   const [activeNetwork, setActiveNetwork] = useState<'mainnet' | 'testnet'>('mainnet');
+
+  // Operator Admin Console state
+  const [adminOverview, setAdminOverview] = useState<{
+    has_api_key: boolean;
+    key_status_label: string;
+    active_model: string;
+    base_url: string;
+    verification_mode: string;
+    cached_live_inferences: number;
+    model_catalog: Array<{
+      id: string;
+      name: string;
+      provider: string;
+      hardware: string;
+      measurement: string;
+      signingAddress: string;
+      latency: string;
+      recommendedFor: string;
+    }>;
+  }>({
+    has_api_key: true,
+    key_status_label: 'sk-•••••••••••••••• (Server .env Active)',
+    active_model: 'z-ai/glm-5.3-flash',
+    base_url: 'https://cloud-api.near.ai/v1',
+    verification_mode: 'LIVE_NEAR_AI_CLOUD_TEE',
+    cached_live_inferences: 0,
+    model_catalog: [
+      {
+        id: 'z-ai/glm-5.3-flash',
+        name: 'GLM-5.3-Flash (Confidential Reasoning TEE)',
+        provider: 'NEAR AI Cloud / Zhipu AI',
+        hardware: 'Intel® Xeon® Platinum 8592+ (Emerald Rapids TDX TD10)',
+        measurement: 'tdx-mrtd:df4d77c857de652bd0fafa343a2026b51071ee03773d076d283abf1a7d36ff91ffa279ee4a617ac664f7e2a2c8d5891b',
+        signingAddress: '0x3b753b4406613c5e70ae640508632b600424fa0c',
+        latency: '~6.5s (Chain-of-Thought + Hardware ECDSA)',
+        recommendedFor: 'Fast Subjective Oracle Resolution & Real-Time Polymarket Alpha'
+      },
+      {
+        id: 'Qwen/Qwen3.8-27B',
+        name: 'Qwen 3.8 27B (Dense Confidential GPU TEE)',
+        provider: 'NEAR AI Cloud / Qwen',
+        hardware: 'NVIDIA H100 SXM5 80GB (NRAS v3 + Intel TDX RTMR0)',
+        measurement: 'tdx-rtmr0:bc122d143ab768565ba5c3774ff5f03a63c89a4df7c1f5ea38d3bd173409d14f8cbdcc36d40e703cccb996a9d9687590',
+        signingAddress: '0x835ab53d20294ef795906dff21ae4c045336aa26',
+        latency: '~9.2s (Dense 27B Multi-Source Synthesis)',
+        recommendedFor: 'Complex Macroeconomic, Regulatory & Multi-Condition Inquiries'
+      },
+      {
+        id: 'Qwen/Qwen3.6-35B-A3B-FP8',
+        name: 'Qwen 3.6 35B-A3B FP8 (MoE High-Throughput TEE)',
+        provider: 'NEAR AI Cloud / Qwen',
+        hardware: 'NVIDIA H100 SXM5 80GB FP8 Confidential Enclave',
+        measurement: 'tdx-rtmr0:bc122d143ab768565ba5c3774ff5f03a63c89a4df7c1f5ea38d3bd173409d14f8cbdcc36d40e703cccb996a9d9687590',
+        signingAddress: '0x835ab53d20294ef795906dff21ae4c045336aa26',
+        latency: '~5.8s (Sparse 3B Active MoE)',
+        recommendedFor: 'High-Frequency Orderbook Scanning & Batch Market Evaluation'
+      }
+    ]
+  });
+  const [adminNewApiKey, setAdminNewApiKey] = useState('');
+  const [isSavingAdminConfig, setIsSavingAdminConfig] = useState(false);
 
   // Accounts state
   const [accounts, setAccounts] = useState<AccountOption[]>(INITIAL_ACCOUNTS);
@@ -135,10 +196,11 @@ export default function App() {
 
   const syncOracleBackendState = async () => {
     try {
-      const [reqRes, encRes, accRes] = await Promise.all([
+      const [reqRes, encRes, accRes, admRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/oracle/requests`),
         fetch(`${API_BASE_URL}/api/oracle/enclaves`),
-        fetch(`${API_BASE_URL}/api/accounts`)
+        fetch(`${API_BASE_URL}/api/accounts`),
+        fetch(`${API_BASE_URL}/api/admin/overview`)
       ]);
 
       if (reqRes.ok) {
@@ -160,8 +222,87 @@ export default function App() {
           setCurrentAccount(prev => accData.accounts.find((a: AccountOption) => a.accountId === prev.accountId) || accData.accounts[0]);
         }
       }
+      if (admRes.ok) {
+        const admData = await admRes.json();
+        if (admData.ai_engine) {
+          setAdminOverview(admData.ai_engine);
+        }
+      }
     } catch {
       // Backend offline fallback
+    }
+  };
+
+  const handleSwitchModel = async (modelId: string) => {
+    setIsSavingAdminConfig(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/model`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId, persist_to_env: true })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ai_engine) setAdminOverview(data.ai_engine);
+        showToast(`Switched active TEE Engine to ${modelId} (persisted to server .env)`, 'success');
+      }
+    } catch {
+      showToast('Failed to reach backend admin endpoint', 'info');
+    } finally {
+      setIsSavingAdminConfig(false);
+    }
+  };
+
+  const handleRotateServerKey = async () => {
+    if (!adminNewApiKey.trim()) return;
+    setIsSavingAdminConfig(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/model`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: adminNewApiKey.trim(), persist_to_env: true })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ai_engine) setAdminOverview(data.ai_engine);
+        setAdminNewApiKey('');
+        showToast('Updated NEAR_AI_API_KEY in server .env successfully!', 'success');
+      }
+    } catch {
+      showToast('Failed to update server API key', 'info');
+    } finally {
+      setIsSavingAdminConfig(false);
+    }
+  };
+
+  const handleDeleteRequest = async (requestId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/requests/${requestId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setRequests(prev => prev.filter(r => r.requestId !== requestId));
+        showToast(`Deleted inquiry ${requestId} from Oracle Registry`, 'info');
+      }
+    } catch {
+      showToast('Failed to delete inquiry', 'info');
+    }
+  };
+
+  const handleToggleEnclave = async (measurement: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/enclaves/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ measurement })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.enclaves)) setEnclaves(data.enclaves);
+        showToast('Updated TEE Enclave Whitelist status on-chain', 'success');
+      }
+    } catch {
+      showToast('Failed to toggle enclave status', 'info');
     }
   };
 
@@ -676,6 +817,24 @@ export default function App() {
                 activeTab === 'hardware' ? 'bg-slate-950/20 text-slate-950 font-black' : 'bg-slate-800 text-purple-300'
               }`}>
                 3 Enclaves
+              </span>
+            </button>
+
+            {/* Tab 4: Node Operator Admin Console */}
+            <button
+              onClick={() => setActiveTab('admin')}
+              className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition relative cursor-pointer ${
+                activeTab === 'admin' 
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-lg shadow-emerald-500/20' 
+                  : 'bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+              }`}
+            >
+              <Terminal className={`w-4 h-4 ${activeTab === 'admin' ? 'text-slate-950' : 'text-amber-400'}`} />
+              <span>⚙️ Operator Admin</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                activeTab === 'admin' ? 'bg-slate-950/20 text-slate-950 font-black' : 'bg-slate-800 text-amber-300'
+              }`}>
+                {adminOverview.active_model.split('/')[1] || 'TEE'}
               </span>
             </button>
 
@@ -1384,6 +1543,305 @@ export default function App() {
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 4: ⚙️ OPERATOR ADMIN CONSOLE (MODEL, KEY & DATA MGMT) */}
+        {/* ======================================================== */}
+        {activeTab === 'admin' && (
+          <div className="space-y-6">
+
+            {/* Admin Header Banner */}
+            <div className="bg-gradient-to-r from-[#0e172a] via-[#131f3a] to-[#0e172a] border border-slate-800 rounded-2xl p-6 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center space-x-2 text-xs font-mono text-amber-400 mb-1">
+                  <Terminal className="w-4 h-4" />
+                  <span>PREDICTEE RELAYER &amp; TEE NODE OPERATOR BACKEND CONSOLE</span>
+                </div>
+                <h2 className="text-xl font-bold text-white">
+                  Confidential AI Model Routing, Server Key Rotation &amp; Oracle Data Management
+                </h2>
+                <p className="text-xs text-slate-400 mt-1 max-w-3xl">
+                  Manage the backend TEE inference engine (`cloud-api.near.ai`), switch active confidential models (`z-ai/glm-5.3-flash` vs `Qwen/Qwen3.8-27B`), rotate the server `.env` API key without exposing it to frontend users, and curate or batch-resolve Oracle inquiries.
+                </p>
+              </div>
+              <div className="flex items-center space-x-2 shrink-0">
+                <span className="px-3 py-1.5 rounded-xl text-xs font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 font-bold">
+                  Mode: {adminOverview.verification_mode}
+                </span>
+              </div>
+            </div>
+
+            {/* Section 1: TEE Model Switcher & Server API Key Management */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+              {/* Left 2 Columns: Confidential AI Model Selector */}
+              <div className="lg:col-span-2 bg-[#0e172a] border border-slate-800 rounded-2xl p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                      <Cpu className="w-4 h-4 text-emerald-400" />
+                      <span>Active NEAR AI Cloud TEE Model Selector</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Select which hardware-attested model processes Oracle resolutions and Polymarket evaluations on the backend server.
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                    Active: {adminOverview.active_model}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {adminOverview.model_catalog.map((m) => {
+                    const isSelected = adminOverview.active_model === m.id;
+                    return (
+                      <div
+                        key={m.id}
+                        className={`p-4 rounded-xl border transition flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
+                          isSelected
+                            ? 'bg-emerald-500/10 border-emerald-500/50 shadow-lg shadow-emerald-500/5'
+                            : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-white text-sm">{m.name}</span>
+                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-sky-300 border border-slate-700">
+                              {m.id}
+                            </span>
+                            {isSelected && (
+                              <span className="text-[10px] font-mono bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded-full">
+                                ACTIVE ENGINE
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-300">
+                            <strong className="text-slate-400">Hardware:</strong> {m.hardware} · <strong className="text-slate-400">Latency:</strong> {m.latency}
+                          </p>
+                          <p className="text-[11px] font-mono text-slate-400">
+                            Attested Signer: <span className="text-emerald-300">{m.signingAddress}</span>
+                          </p>
+                        </div>
+
+                        <button
+                          disabled={isSelected || isSavingAdminConfig}
+                          onClick={() => handleSwitchModel(m.id)}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                            isSelected
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 cursor-default'
+                              : 'bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 text-white border border-slate-700'
+                          }`}
+                        >
+                          {isSelected ? '✓ Currently Active' : 'Switch to Model'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right Column: Server .env API Key Rotation & Security */}
+              <div className="bg-[#0e172a] border border-slate-800 rounded-2xl p-6 flex flex-col justify-between space-y-4">
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                      <Lock className="w-4 h-4 text-amber-400" />
+                      <span>Server `.env` Credential Vault</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      API keys are stored strictly on the backend (`packages/agent/.env`) and never exposed to public frontend users.
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-2 font-mono text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Server Key Status:</span>
+                      <span className="text-emerald-400 font-bold flex items-center space-x-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Loaded</span>
+                      </span>
+                    </div>
+                    <div className="text-slate-200 bg-slate-950 px-3 py-2 rounded-lg border border-slate-800/80 select-none">
+                      {adminOverview.key_status_label}
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                      <span>Endpoint:</span>
+                      <span className="text-sky-300">{adminOverview.base_url}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>Cached Live Inferences:</span>
+                      <span className="text-emerald-300 font-bold">{adminOverview.cached_live_inferences}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-1">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Rotate / Update Server `NEAR_AI_API_KEY`:
+                    </label>
+                    <input
+                      type="password"
+                      value={adminNewApiKey}
+                      onChange={(e) => setAdminNewApiKey(e.target.value)}
+                      placeholder="sk-••••••••••••••••••••••••"
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white outline-none"
+                    />
+                    <button
+                      disabled={!adminNewApiKey.trim() || isSavingAdminConfig}
+                      onClick={handleRotateServerKey}
+                      className="w-full bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 disabled:opacity-40 text-slate-950 font-bold text-xs py-2.5 rounded-xl transition cursor-pointer"
+                    >
+                      Save New Key to Server `.env`
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl text-[11px] text-slate-300 leading-relaxed">
+                  <strong className="text-amber-300">Zero-Leak Architecture:</strong> Public users interact with Oracle resolutions and Polymarket Alpha without needing their own API key. All TEE calls are signed by the server relayer.
+                </div>
+              </div>
+
+            </div>
+
+            {/* Section 2: Oracle Inquiries & Resolution Data Management Table */}
+            <div className="bg-[#0e172a] border border-slate-800 rounded-2xl p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                    <Activity className="w-4 h-4 text-sky-400" />
+                    <span>Oracle Inquiry &amp; Resolution Data Management ({requests.length} Total)</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Trigger live TEE relayer fulfillment on pending inquiries, inspect hardware signatures, or delete test/invalid entries.
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowNewRequestModal(true)}
+                    className="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New Curated Inquiry</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400 font-mono uppercase text-[10px]">
+                      <th className="py-2.5 px-3">ID</th>
+                      <th className="py-2.5 px-3">Oracle Proposition / Query</th>
+                      <th className="py-2.5 px-3">Category</th>
+                      <th className="py-2.5 px-3">Bounty</th>
+                      <th className="py-2.5 px-3">Status / Outcome</th>
+                      <th className="py-2.5 px-3">TEE Model &amp; Signer</th>
+                      <th className="py-2.5 px-3 text-right">Operator Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {requests.map((r) => {
+                      const isRes = r.status === 'RESOLVED' && r.resolution;
+                      const isResolvingThis = resolvingRequestId === r.requestId;
+                      return (
+                        <tr key={r.requestId} className="hover:bg-slate-900/40 transition">
+                          <td className="py-3 px-3 font-mono font-bold text-slate-300">{r.requestId}</td>
+                          <td className="py-3 px-3 text-white font-medium max-w-md">{r.query}</td>
+                          <td className="py-3 px-3 font-mono text-slate-400">{r.category}</td>
+                          <td className="py-3 px-3 font-mono text-emerald-400 font-semibold">{r.bountyNear} NEAR</td>
+                          <td className="py-3 px-3 font-mono">
+                            {isRes ? (
+                              <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
+                                RESOLVED: {r.resolution?.outcome} ({((r.resolution?.confidenceBps || 0) / 100).toFixed(1)}%)
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold">
+                                PENDING
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
+                            {isRes ? (
+                              <div>
+                                <div className="text-purple-300">{r.resolution?.model}</div>
+                                <div className="text-slate-500">{r.resolution?.signerAddress?.slice(0, 14)}...</div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500">Awaiting Relayer ({adminOverview.active_model})</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right space-x-2 whitespace-nowrap">
+                            {isRes ? (
+                              <button
+                                onClick={() => handleInspectRequestProof(r)}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 font-mono text-[11px] transition cursor-pointer"
+                              >
+                                Inspect Quote
+                              </button>
+                            ) : (
+                              <button
+                                disabled={isResolvingThis}
+                                onClick={() => handleTriggerResolution(r)}
+                                className="px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-[11px] transition cursor-pointer"
+                              >
+                                {isResolvingThis ? 'Running TEE...' : '⚡ Resolve in TEE'}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteRequest(r.requestId)}
+                              className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono text-[11px] transition cursor-pointer"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Section 3: On-Chain TEE Hardware Whitelist Toggle */}
+            <div className="bg-[#0e172a] border border-slate-800 rounded-2xl p-6 space-y-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                  <ShieldCheck className="w-4 h-4 text-purple-400" />
+                  <span>On-Chain TEE Hardware Enclave Whitelist Control</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Enable or pause hardware enclave measurements authorized to submit `fulfill_resolution` signatures to the NEAR smart contract.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {enclaves.map((enc) => (
+                  <div key={enc.id} className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                          enc.active ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                        }`}>
+                          {enc.active ? '● WHITELIST ACTIVE' : '○ PAUSED'}
+                        </span>
+                        <span className="text-[11px] font-mono text-slate-400">Resolved: {enc.totalResolutions}</span>
+                      </div>
+                      <h4 className="text-xs font-bold text-white mt-2">{enc.label}</h4>
+                      <p className="text-[11px] font-mono text-sky-300 truncate mt-1">{enc.measurement}</p>
+                      <p className="text-[11px] font-mono text-emerald-300 truncate">Signer: {enc.signingAddress}</p>
+                    </div>
+                    <button
+                      onClick={() => handleToggleEnclave(enc.measurement)}
+                      className="w-full py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-200 border border-slate-700 transition cursor-pointer"
+                    >
+                      {enc.active ? 'Pause Enclave Measurement' : 'Activate Enclave Measurement'}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
 
           </div>
