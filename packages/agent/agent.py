@@ -930,7 +930,7 @@ def fulfill_oracle(payload: FulfillOraclePayload):
             "evidenceDigest": payload.evidence_digest or "",
             "signerAddress": signer_address,
             "attestedEnclaveAddress": attested_enclave_address,
-            "activeSignerAddress": generated_quote["signer_address"],
+            "activeSignerAddress": signer_address,
             "signedText": signed_text,
             "canonicalFulfillMessage": canonical_fulfill_msg,
             "ecdsaSignature": ecdsa_signature,

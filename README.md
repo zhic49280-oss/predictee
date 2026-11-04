@@ -12,6 +12,16 @@
 
 ---
 
+## 📸 Live NEAR AI Cloud TEE Demo Gallery
+
+| Live TEE Oracle Explorer (`z-ai/glm-5.3-flash`) | Intel TDX TD10 Hardware Quote & ECDSA Proof |
+| :---: | :---: |
+| ![Live Oracle Explorer](./docs/screenshots/01-oracle-explorer-live-tee.png) | ![TEE Hardware Quote Inspector](./docs/screenshots/02-tee-hardware-quote-inspector.png) |
+| **Polymarket Alpha & Arbitrage Engine** | **NEAR Chain Signatures (`v1.signer`) 1-Click Order** |
+| ![Polymarket Alpha Engine](./docs/screenshots/03-polymarket-alpha-near-mpc.png) | ![NEAR MPC 1-Click Order](./docs/screenshots/05-near-mpc-1click-order.png) |
+
+---
+
 ## 🧪 Judge Verification Guide: "Do X, See Y" (Human & AI Judges)
 
 > 🎬 **Demo Walkthrough & Submission Manifest:** [3-Minute Pitch & Walkthrough (`DEMO_GUIDE.md`)](./DEMO_GUIDE.md) · [Hackathon Submission Manifest (`HACKATHON.md`)](./HACKATHON.md)
