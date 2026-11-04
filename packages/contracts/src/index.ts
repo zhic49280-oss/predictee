@@ -14,6 +14,7 @@ export interface OracleRequest {
     resolvedAt: string | null;
     callbackContract: string | null;
     callbackMethod: string | null;
+    callbackGasTgas?: number;
 }
 
 export interface OracleResolution {
@@ -155,7 +156,6 @@ export class PredicTEEContract {
         this.totalBountiesPaidYocto = '0';
 
         const now = near.blockTimestamp().toString();
-        this.authorizedResolvers.set(this.ownerId, true);
 
         // Register real NEAR AI Cloud Intel TDX / NVIDIA H100 / Dstack measurements & TEE signing addresses
         // Verified against https://cloud-api.near.ai/v1/attestation/report (Intel DCAP + NVIDIA NRAS)
@@ -170,7 +170,7 @@ export class PredicTEEContract {
         this.verifiedEnclaves.set(NVIDIA_H100_RTMR0, {
             measurement: NVIDIA_H100_RTMR0,
             signingAddress: "0x835ab53d20294ef795906dff21ae4c045336aa26",
-            label: "NEAR AI Cloud NVIDIA H100 Confidential GPU Enclave (Qwen/Qwen3.8-27B TEE)",
+            label: "NEAR AI Cloud TDX RTMR0 + NVIDIA H100 NRAS Enclave (Qwen/Qwen3.8-27B TEE)",
             active: true,
             registeredAt: now
         });
@@ -195,12 +195,14 @@ export class PredicTEEContract {
         query,
         category = 'General',
         callback_contract,
-        callback_method
+        callback_method,
+        callback_gas_tgas = 30
     }: {
         query: string;
         category?: string;
         callback_contract?: string;
         callback_method?: string;
+        callback_gas_tgas?: number;
     }): string {
         const deposit = near.attachedDeposit();
         assert(deposit >= MIN_DEPOSIT_YOCTO, "Resolution request requires at least 0.01 NEAR bounty deposit (yoctoNEAR)");
@@ -213,6 +215,7 @@ export class PredicTEEContract {
             (!callback_contract && !callback_method) || (Boolean(callback_contract) && Boolean(callback_method)),
             "callback_contract and callback_method must be provided together"
         );
+        const safeCallbackGasTgas = Math.min(Math.max(10, Number(callback_gas_tgas || 30)), 150);
 
         const requester = near.predecessorAccountId();
         const storageBefore = near.storageUsage();
@@ -230,7 +233,8 @@ export class PredicTEEContract {
             createdAt: near.blockTimestamp().toString(),
             resolvedAt: null,
             callbackContract: callback_contract || null,
-            callbackMethod: callback_method || null
+            callbackMethod: callback_method || null,
+            callbackGasTgas: safeCallbackGasTgas
         };
 
         this.requests.set(requestId, request);
@@ -260,12 +264,15 @@ export class PredicTEEContract {
 
     /**
      * Build canonical message signed by a TEE enclave for a resolution fulfillment.
+     * Binds request_id, outcome, confidence_bps, resolver account (anti-MEV front-running),
+     * attestation_hash, enclave_measurement, and evidence_digest.
      */
     @view({})
     build_fulfill_message({
         request_id,
         outcome,
         confidence_bps,
+        resolver = '',
         attestation_hash,
         enclave_measurement,
         evidence_digest = ''
@@ -273,24 +280,29 @@ export class PredicTEEContract {
         request_id: string;
         outcome: string;
         confidence_bps: number;
+        resolver?: string;
         attestation_hash: string;
         enclave_measurement: string;
         evidence_digest?: string;
     }): string {
-        return `PREDICTEE_RESOLVE_V2:${request_id}:${outcome.trim()}:${confidence_bps}:${attestation_hash.trim()}:${enclave_measurement}:${evidence_digest || ''}`;
+        const cleanDigest = (evidence_digest || '').trim().replace(/^0x/i, '').toLowerCase();
+        const cleanResolver = (resolver || '').trim();
+        return `PREDICTEE_RESOLVE_V3:${request_id}:${outcome.trim()}:${confidence_bps}:${cleanResolver}:${attestation_hash.trim()}:${enclave_measurement}:${cleanDigest}`;
     }
 
     /**
      * Fulfill an active prediction request from an attested NEAR AI Cloud TEE Enclave.
      *
-     * Security enforcement (fixes unauthenticated measurement string spoofing):
-     *   1. `enclave_measurement` must be active in `verifiedEnclaves`.
-     *   2. If `ecdsa_signature` is supplied, the contract performs on-chain EIP-191
-     *      secp256k1 `ecrecover` over `signed_text` (or the canonical fulfill message)
-     *      and asserts the recovered `0x...` address matches `enclave.signingAddress`.
-     *   3. If `ecdsa_signature` is not supplied, the caller (`predecessorAccountId`)
-     *      MUST be registered in `authorizedResolvers`. Unauthenticated callers who
-     *      merely copy a public measurement string from the README are rejected.
+     * Supports two cryptographic verification paths via on-chain `near.ecrecover`:
+     *   - Mode A (Native NEAR AI Cloud `/v1/signature/{chat_id}` verification):
+     *     When `request_body` and `response_body` are supplied, the contract computes
+     *     `sha256(request_body)` and `sha256(response_body)` on-chain, verifies that
+     *     `signed_text` equals `${req_sha256}:${resp_sha256}` (or `${model}:${req_sha256}:${resp_sha256}`),
+     *     verifies `request_body` contains `request.query` and `response_body` contains
+     *     `outcome` and `confidence_bps`, and verifies `near.ecrecover` against `enclave.signingAddress`.
+     *   - Mode B (Canonical `PREDICTEE_RESOLVE_V3` verification):
+     *     Verifies `near.ecrecover` over the canonical `PREDICTEE_RESOLVE_V3` message binding
+     *     `request_id`, `outcome`, `confidence_bps`, and `resolver` (anti-MEV front-running).
      */
     @call({})
     fulfill_resolution({
@@ -301,7 +313,9 @@ export class PredicTEEContract {
         enclave_measurement,
         evidence_digest = '',
         signed_text = '',
-        ecdsa_signature = ''
+        ecdsa_signature = '',
+        request_body = '',
+        response_body = ''
     }: {
         request_id: string;
         outcome: string;
@@ -311,6 +325,8 @@ export class PredicTEEContract {
         evidence_digest?: string;
         signed_text?: string;
         ecdsa_signature?: string;
+        request_body?: string;
+        response_body?: string;
     }): OracleResolution {
         // 1. Verify TEE Hardware Enclave measurement against on-chain whitelist
         const enclave = this.verifiedEnclaves.get(enclave_measurement);
@@ -318,12 +334,20 @@ export class PredicTEEContract {
             throw new Error("Unverified TEE Hardware: Enclave measurement rejected.");
         }
 
-        // 2. Validate request exists and is PENDING
+        // 2. Validate request exists, is PENDING, and parameters are strictly well-formed
         const request = this.requests.get(request_id);
         assert(request !== null, `OracleRequest not found: ${request_id}`);
         assert(request.status === "PENDING", `Request ${request_id} is not in PENDING state (status: ${request.status})`);
-        assert(confidence_bps >= 0 && confidence_bps <= 10000, "confidence_bps must be between 0 and 10000");
+        assert(
+            typeof confidence_bps === "number" && Number.isInteger(confidence_bps) && confidence_bps >= 0 && confidence_bps <= 10000,
+            "confidence_bps must be an integer between 0 and 10000"
+        );
         assert(Boolean(outcome && outcome.trim().length > 0), "Outcome string cannot be empty");
+        const cleanOutcome = outcome.trim().toUpperCase();
+        assert(
+            cleanOutcome === "YES" || cleanOutcome === "NO" || cleanOutcome === "INVALID",
+            "Outcome must be one of YES, NO, or INVALID"
+        );
         assert(Boolean(attestation_hash && attestation_hash.trim().length > 0), "Attestation hash is required");
 
         const resolver = near.predecessorAccountId();
@@ -331,37 +355,61 @@ export class PredicTEEContract {
 
         // 3. Cryptographic TEE ECDSA verification OR Authorized Resolver check
         if (ecdsa_signature && ecdsa_signature.trim().length > 0) {
-            const cleanSig = ecdsa_signature.trim().toLowerCase();
-            assert(
-                !this.usedSignatures.get(cleanSig),
-                "TEE ECDSA signature replay rejected: signature has already been used"
-            );
-
             const canonicalMsg = this.build_fulfill_message({
                 request_id,
-                outcome,
+                outcome: cleanOutcome,
                 confidence_bps,
+                resolver,
                 attestation_hash,
                 enclave_measurement,
                 evidence_digest
             });
-            const msgToVerify = (signed_text && signed_text.trim().length > 0) ? signed_text.trim() : canonicalMsg;
-            // Ensure signed_text is bound to either this request_id or the NEAR AI Cloud chat hash format
-            if (signed_text && signed_text.trim().length > 0 && msgToVerify !== canonicalMsg) {
-                const parts = msgToVerify.split(':');
-                const cleanDigest = (evidence_digest || '').trim().replace(/^0x/i, '').toLowerCase();
-                const bindsDigest = cleanDigest.length >= 8 && msgToVerify.toLowerCase().includes(cleanDigest);
+
+            let msgToVerify = canonicalMsg;
+
+            if (request_body && request_body.length > 0 && response_body && response_body.length > 0) {
+                // Mode A: Native NEAR AI Cloud /v1/signature/{chat_id} verification
+                const reqSha256 = toHex(near.sha256(utf8(request_body)));
+                const respSha256 = toHex(near.sha256(utf8(response_body)));
+                const expectedPair = `${reqSha256}:${respSha256}`;
+                const cleanSignedText = signed_text.trim();
                 assert(
-                    msgToVerify.includes(request_id) || ((parts.length === 2 || parts.length === 3) && (bindsDigest || cleanDigest.length === 0)),
-                    "signed_text must be NEAR AI Cloud '[model:]req_sha256:resp_sha256' bound to evidence_digest or bind request_id"
+                    cleanSignedText === expectedPair || cleanSignedText.endsWith(`:${expectedPair}`),
+                    `Invalid NEAR AI Cloud signed_text: expected [model:]${expectedPair}, got ${cleanSignedText}`
                 );
+                assert(
+                    request_body.includes(request.query),
+                    "Invalid request_body: does not contain the on-chain OracleRequest query"
+                );
+                assert(
+                    (response_body.includes(`"${cleanOutcome}"`) || response_body.includes(`\\"${cleanOutcome}\\"`))
+                    && response_body.includes(String(confidence_bps)),
+                    "Invalid response_body: does not match submitted outcome and confidence_bps"
+                );
+                msgToVerify = cleanSignedText;
+            } else {
+                // Mode B: Canonical PREDICTEE_RESOLVE_V3 verification (SEC-01 & SEC-02)
+                if (signed_text && signed_text.trim().length > 0) {
+                    assert(
+                        signed_text.trim() === canonicalMsg,
+                        "Invalid signed_text: must match canonical PREDICTEE_RESOLVE_V3 message binding request_id, outcome, confidence_bps, and resolver"
+                    );
+                }
             }
+
+            // Key replay protection by message digest to prevent ECDSA (r, n-s) malleability bypass
+            const msgDigestKey = toHex(near.keccak256(utf8(msgToVerify)));
+            assert(
+                !this.usedSignatures.get(msgDigestKey),
+                "TEE ECDSA signature replay rejected: message digest has already been used"
+            );
+
             const recovered = recoverEip191Address(msgToVerify, ecdsa_signature.trim());
             assert(
                 recovered.toLowerCase() === enclave.signingAddress.toLowerCase(),
                 `Invalid TEE ECDSA Signature: recovered ${recovered} does not match enclave signingAddress ${enclave.signingAddress}`
             );
-            this.usedSignatures.set(cleanSig, true);
+            this.usedSignatures.set(msgDigestKey, true);
             verifiedSignerAddress = recovered.toLowerCase();
         } else {
             const isAuthorized = Boolean(this.authorizedResolvers.get(resolver));
@@ -381,7 +429,7 @@ export class PredicTEEContract {
         // 5. Create and store OracleResolution
         const resolution: OracleResolution = {
             requestId: request_id,
-            outcome: outcome.trim(),
+            outcome: cleanOutcome,
             confidenceBps: confidence_bps,
             attestationHash: attestation_hash.trim(),
             enclaveMeasurement: enclave_measurement,
@@ -393,17 +441,19 @@ export class PredicTEEContract {
         };
         this.resolutions.set(request_id, resolution);
 
-        // 6. Update Oracle statistics
+        // 6. Update Oracle statistics and compute net bounty after retaining storage staking cost
         this.resolvedCount += 1;
         const bountyYocto = BigInt(request.bountyYocto);
-        this.totalBountiesPaidYocto = (BigInt(this.totalBountiesPaidYocto) + bountyYocto).toString();
+        const storagePaidYocto = BigInt(request.storagePaidYocto || '0');
+        const netBountyYocto = bountyYocto > storagePaidYocto ? bountyYocto - storagePaidYocto : 0n;
+        this.totalBountiesPaidYocto = (BigInt(this.totalBountiesPaidYocto) + netBountyYocto).toString();
 
-        // 7. Transfer bounty reward to the TEE resolver
-        if (bountyYocto > 0n) {
-            NearPromise.new(resolver).transfer(bountyYocto).build();
+        // 7. Transfer net bounty reward to the TEE resolver
+        if (netBountyYocto > 0n) {
+            NearPromise.new(resolver).transfer(netBountyYocto).build();
         }
 
-        // 8. Dispatch callback to consumer contract if registered
+        // 8. Dispatch callback to consumer contract if registered (REL-02: configurable gas default 30 TGas)
         if (request.callbackContract && request.callbackMethod) {
             const callbackPayload = JSON.stringify({
                 requestId: request_id,
@@ -413,11 +463,12 @@ export class PredicTEEContract {
                 signerAddress: resolution.signerAddress,
                 evidenceDigest: resolution.evidenceDigest
             });
+            const callbackGas = BigInt(request.callbackGasTgas || 30) * BigInt("1000000000000");
             NearPromise.new(request.callbackContract).functionCall(
                 request.callbackMethod,
                 callbackPayload,
                 0n,
-                BigInt("10000000000000") // 10 TGas
+                callbackGas
             ).build();
         }
 
@@ -434,7 +485,8 @@ export class PredicTEEContract {
                 signer_address: verifiedSignerAddress,
                 attestation_hash,
                 enclave_measurement,
-                bounty_paid_yocto: request.bountyYocto,
+                bounty_paid_yocto: netBountyYocto.toString(),
+                storage_retained_yocto: storagePaidYocto.toString(),
                 resolved_at: resolvedAt
             }]
         };
@@ -444,7 +496,7 @@ export class PredicTEEContract {
     }
 
     /**
-     * Cancel a pending request and refund the bounty deposit to the requester.
+     * Cancel a pending request and refund the net bounty deposit (after deducting storage staking cost) to the requester.
      * Can only be called by the original requester or contract owner.
      */
     @call({})
@@ -464,7 +516,10 @@ export class PredicTEEContract {
         this.requests.set(request_id, request);
 
         this.cancelledCount += 1;
-        const refundYocto = BigInt(request.bountyYocto);
+        // SEC-05 fix: Deduct storagePaidYocto from refund to prevent storage staking drainage DoS
+        const bountyYocto = BigInt(request.bountyYocto);
+        const storagePaidYocto = BigInt(request.storagePaidYocto || '0');
+        const refundYocto = bountyYocto > storagePaidYocto ? bountyYocto - storagePaidYocto : 0n;
         if (refundYocto > 0n) {
             NearPromise.new(request.requester).transfer(refundYocto).build();
         }
@@ -476,7 +531,8 @@ export class PredicTEEContract {
             data: [{
                 request_id,
                 requester: request.requester,
-                refunded_yocto: request.bountyYocto,
+                refunded_yocto: refundYocto.toString(),
+                storage_retained_yocto: storagePaidYocto.toString(),
                 cancelled_at: cancelledAt
             }]
         };
@@ -583,7 +639,7 @@ export class PredicTEEContract {
 
         const effectiveLimit = Math.min(Math.max(1, limit), 100);
         const results: OracleRequest[] = [];
-        const maxScan = Math.min(total, from_index + 200);
+        const maxScan = Math.min(total, from_index + 1000);
 
         for (let i = from_index + 1; i <= maxScan; i++) {
             const req = this.requests.get(`req-${i}`);

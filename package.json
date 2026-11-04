@@ -13,6 +13,7 @@
     "contracts:test": "npm --prefix packages/contracts run test",
     "agent:test": "python packages/agent/test_agent.py",
     "verify:tee": "python packages/agent/verify_near_ai_tee.py",
+    "verify:headless": "python packages/agent/verify_headless.py",
     "test": "npm run contracts:test && python packages/agent/test_agent.py",
     "agent": "python packages/agent/agent.py"
   },

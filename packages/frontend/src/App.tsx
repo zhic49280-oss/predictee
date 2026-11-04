@@ -41,6 +41,8 @@ import {
   FALLBACK_MARKETS_DATA 
 } from './mockData';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+
 export default function App() {
   // Navigation & Tabs
   const [activeTab, setActiveTab] = useState<'oracle' | 'markets' | 'hardware'>('oracle');
@@ -96,7 +98,8 @@ export default function App() {
     status: string;
     execution_mode?: string;
     derived_polygon_address?: string;
-    polygon_tx_hash: string;
+    polygon_tx_hash?: string | null;
+    clob_order_hash?: string;
     explorer_url: string;
     near_mpc_explorer_url?: string;
     eip712_digest?: string;
@@ -133,9 +136,9 @@ export default function App() {
   const syncOracleBackendState = async () => {
     try {
       const [reqRes, encRes, accRes] = await Promise.all([
-        fetch('http://127.0.0.1:8000/api/oracle/requests'),
-        fetch('http://127.0.0.1:8000/api/oracle/enclaves'),
-        fetch('http://127.0.0.1:8000/api/accounts')
+        fetch(`${API_BASE_URL}/api/oracle/requests`),
+        fetch(`${API_BASE_URL}/api/oracle/enclaves`),
+        fetch(`${API_BASE_URL}/api/accounts`)
       ]);
 
       if (reqRes.ok) {
@@ -165,7 +168,7 @@ export default function App() {
   const handleManualRefreshMarkets = async () => {
     setLoadingMarkets(true);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/markets');
+      const res = await fetch(`${API_BASE_URL}/api/markets`);
       if (res.ok) {
         const data = await res.json();
         if (data.markets && data.markets.length > 0) {
@@ -185,7 +188,7 @@ export default function App() {
     const loadAllData = async () => {
       await syncOracleBackendState();
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/markets');
+        const res = await fetch(`${API_BASE_URL}/api/markets`);
         if (res.ok && active) {
           const data = await res.json();
           if (data.markets && data.markets.length > 0) {
@@ -249,7 +252,7 @@ export default function App() {
 
     try {
       // Step 1: Execute TEE reasoning and cryptographic quote generation on backend
-      const resolveRes = await fetch('http://127.0.0.1:8000/api/oracle/resolve', {
+      const resolveRes = await fetch(`${API_BASE_URL}/api/oracle/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -265,7 +268,7 @@ export default function App() {
       const resolveData = await resolveRes.json();
 
       // Step 2: Fulfill on-chain resolution and release bounty via backend
-      const fulfillRes = await fetch('http://127.0.0.1:8000/api/oracle/fulfill', {
+      const fulfillRes = await fetch(`${API_BASE_URL}/api/oracle/fulfill`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -315,7 +318,7 @@ export default function App() {
     } catch (err) {
       setResolvingRequestId(null);
       showToast(
-        `Backend service unreachable (${err instanceof Error ? err.message : 'offline'}). Ensure agent.py is running on port 8000.`,
+        `Backend service unreachable (${err instanceof Error ? err.message : 'offline'}). Ensure agent.py is running on ${API_BASE_URL}.`,
         'info'
       );
     }
@@ -329,7 +332,7 @@ export default function App() {
     setIsSubmittingRequest(true);
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/oracle/request', {
+      const res = await fetch(`${API_BASE_URL}/api/oracle/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -406,7 +409,7 @@ export default function App() {
     const nearEquivalent = Math.max(0.5, Math.round((betAmount / 5.0) * 100) / 100);
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/intent/create', {
+      const res = await fetch(`${API_BASE_URL}/api/intent/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -421,7 +424,7 @@ export default function App() {
 
       if (res.ok) {
         const json = await res.json();
-        const execRes = await fetch('http://127.0.0.1:8000/api/intent/execute', {
+        const execRes = await fetch(`${API_BASE_URL}/api/intent/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ intent: json.intent })
@@ -1880,8 +1883,10 @@ export default function App() {
                     </div>
                   )}
                   <div>
-                    <span className="text-slate-400 block mb-0.5">Polygon Order / Tx Hash:</span>
-                    <span className="text-sky-300 break-all text-[10px] select-all">{executionResult.polygon_tx_hash}</span>
+                    <span className="text-slate-400 block mb-0.5">Polygon CLOB Order Hash (Sandbox Signed):</span>
+                    <span className="text-sky-300 break-all text-[10px] select-all">
+                      {executionResult.polygon_tx_hash || executionResult.clob_order_hash || executionResult.eip712_digest}
+                    </span>
                   </div>
                   {executionResult.mpc_sign_request && (
                     <div>

@@ -90,12 +90,20 @@ Use this exact timing and script when recording the project demo or presenting l
 
 Follow these steps to conduct an interactive demo or judge evaluation:
 
+### Step 0: Install Dependencies
+Ensure Node.js (18+) and Python (3.10+) dependencies are installed:
+```bash
+npm install
+pip install -r packages/agent/requirements.txt
+```
+
 ### Step 1: Launch the Full Stack Environment
 Run the unified 1-click startup script from the project root:
 ```cmd
 start.bat
 ```
-This performs an environment check, gives you the option to run the contract test suite, boots the Python agent API at `http://127.0.0.1:8000`, and opens the frontend at `http://localhost:5173`.
+*(For headless AI judges or CI environments without a browser, run `npm run verify:headless` or `start.bat --headless`)*
+This performs an environment check, runs the contract test suite, boots the Python agent API at `http://127.0.0.1:8000`, and opens the frontend at `http://localhost:5173`.
 
 ---
 

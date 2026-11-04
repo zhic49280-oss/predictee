@@ -83,8 +83,16 @@ async def verify_live_hardware_attestation(model: str = DEFAULT_MODEL) -> dict:
     print("\n[3/4] Verifying NVIDIA H100 Confidential GPU Evidence via NVIDIA NRAS...")
     nv_payload = json.loads(ma["nvidia_payload"])
     nv_nonce_matches = nv_payload["nonce"].lower() == nonce.lower()
-    nv_resp = requests.post(NVIDIA_NRAS_URL, json=nv_payload, timeout=20).json()
-    jwt_part = nv_resp[0][1].split(".")[1]
+    nv_http_resp = requests.post(NVIDIA_NRAS_URL, json=nv_payload, timeout=20)
+    nv_http_resp.raise_for_status()
+    nv_resp = nv_http_resp.json()
+    assert isinstance(nv_resp, list) and len(nv_resp) > 0 and len(nv_resp[0]) > 1, (
+        f"Unexpected NVIDIA NRAS response structure: {nv_resp}"
+    )
+    jwt_token = str(nv_resp[0][1])
+    jwt_parts = jwt_token.split(".")
+    assert len(jwt_parts) >= 2, "Malformed JWT returned by NVIDIA NRAS"
+    jwt_part = jwt_parts[1]
     jwt_part += "=" * ((4 - len(jwt_part) % 4) % 4)
     nv_claims = json.loads(base64.urlsafe_b64decode(jwt_part).decode("utf-8"))
     nv_verdict = nv_claims.get("x-nvidia-overall-att-result")

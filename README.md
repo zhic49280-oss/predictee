@@ -14,7 +14,18 @@
 
 ## 🧪 Judge Verification Guide: "Do X, See Y" (Human & AI Judges)
 
- Judges and automated evaluation agents (**Claude Code** & **Codex**) can verify every layer of PredicTEE out of the box **without needing a secret API key**:
+> 🎬 **Demo Walkthrough & Submission Manifest:** [3-Minute Pitch & Walkthrough (`DEMO_GUIDE.md`)](./DEMO_GUIDE.md) · [Hackathon Submission Manifest (`HACKATHON.md`)](./HACKATHON.md)
+
+Judges and automated evaluation agents (**Claude Code** & **Codex**) can verify every layer of PredicTEE out of the box **without needing a secret API key**:
+
+### Step 0: Prerequisites & Dependency Installation
+- **Prerequisites:** Node.js 18+ and Python 3.10+
+- **Do:**
+  ```bash
+  npm install
+  pip install -r packages/agent/requirements.txt
+  ```
+- **See:** Installs `@noble/curves`, `@noble/hashes`, `near-sdk-js`, `dcap-qvl` (Intel DCAP quote verifier), `py_ecc` (`secp256k1`), `eth-account`, and `fastapi`.
 
 ### Step 1: Verify Live NEAR AI Cloud TEE Hardware Attestation (Keyless)
 - **Do:** `npm run verify:tee` *(or `python packages/agent/verify_near_ai_tee.py`)*
@@ -27,20 +38,36 @@
 ### Step 2: Run Full Protocol Regression Suite (Smart Contract + Agent)
 - **Do:** `npm test`
 - **See:**
-  - **8/8 NEAR Smart Contract suites** (`packages/contracts/test/simulate.js`) pass using real `sha256`, `keccak256`, and `secp256k1` `ecrecover` host precompiles — rejecting unverified measurements, rejecting public measurement spoofing without a valid TEE signature, rejecting forged ECDSA signatures, and rejecting relayer outcome tampering.
-  - **5/5 Python Agent & API suites** (`packages/agent/test_agent.py`) pass — verifying canonical NEAR MPC `v1.signer` secp256k1 epsilon derivation (`alice.near` $\rightarrow$ `0xd9EfEf5d4bc96d747f817F8bCFc307591d377BfA`), EIP-712 Polymarket CLOB order hashing, and Oracle REST lifecycle.
+  - **8/8 NEAR Smart Contract suites** (`packages/contracts/test/simulate.js`) pass using real `sha256`, `keccak256`, and `secp256k1` `ecrecover` host precompiles — rejecting unverified measurements, rejecting public measurement spoofing without a valid TEE signature, rejecting forged ECDSA signatures, rejecting decoupled signatures (`SEC-01`), rejecting MEV front-running (`SEC-02`), and rejecting relayer outcome tampering.
+  - **5/5 Python Agent & API suites** (`packages/agent/test_agent.py`) pass — verifying canonical NEAR MPC `v1.signer` secp256k1 epsilon derivation (`alice.near` $\rightarrow$ `0xd9EfEf5d4bc96d747f817F8bCFc307591d377BfA`), EIP-712 Polymarket CLOB order hashing, SSRF & prompt-injection guards, and Oracle REST lifecycle.
 
-### Step 3: Launch the Interactive Web Dashboard & Agent Backend
-- **Do (Windows):** `.\start.bat`
-- **Do (Linux / macOS):** `bash ./start.sh` *(or run `python packages/agent/agent.py` and `npm run dev:frontend`)*
+### Step 3: Launch the Interactive Web Dashboard & Agent Backend (or Run Headless)
+- **Do (AI Judges / Headless CI 1-Command Verification):** `npm run verify:headless` *(or `.\start.bat --headless` / `bash ./start.sh --headless`)*
+- **Do (Windows Interactive UI):** `.\start.bat`
+- **Do (Linux / macOS Interactive UI):** `bash ./start.sh` *(or run `python packages/agent/agent.py` and `npm run dev:frontend`)*
 - **See:** Backend REST API running at `http://127.0.0.1:8000` (Swagger docs at `http://127.0.0.1:8000/docs`) and React dashboard at `http://localhost:5173`.
 
-### Step 4: Trigger TEE Resolution & Inspect Hardware Proof in UI
-- **Do:** Open `http://localhost:5173`, locate pending inquiry `req-3`, and click **"✨ Trigger TEE Resolution"**.
-- **See:** Status transitions from `PENDING` to `RESOLVED`, displays conviction score in basis points, and lets you inspect the TDX `mr_td` / `rt_mr0` measurement, `signing_address`, and EIP-191 ECDSA signature.
+### Step 4: Trigger TEE Resolution & Inspect Hardware Proof (UI or Headless CLI)
+- **Do (Browser UI):** Open `http://localhost:5173`, locate pending inquiry `req-3`, and click **"✨ Trigger TEE Resolution"**.
+- **Do (Headless CLI / `curl` for AI Judges):**
+  ```bash
+  # Optional: Reset demo state if req-3 was already resolved in an earlier run
+  curl -s -X POST http://127.0.0.1:8000/api/dev/reset
 
-### Step 5: Test Cross-Chain Polymarket Order Preparation via NEAR MPC
-- **Do:** Switch to **"⚡ Prediction Markets & Alpha"** tab, pick a live Polymarket market, and click **"Confirm & Sign via NEAR MPC"**.
+  curl -s -X POST http://127.0.0.1:8000/api/oracle/resolve \
+    -H "Content-Type: application/json" \
+    -d '{"request_id": "req-3"}'
+  ```
+- **See:** Status transitions from `PENDING` to `RESOLVED`, displays conviction score in basis points, and outputs the TDX `mr_td` / `rt_mr0` measurement, `signing_address`, canonical `PREDICTEE_RESOLVE_V3` fulfillment message, and EIP-191 ECDSA signature.
+
+### Step 5: Test Cross-Chain Polymarket Order Preparation via NEAR MPC (UI or Headless CLI)
+- **Do (Browser UI):** Switch to **"⚡ Prediction Markets & Alpha"** tab, pick a live Polymarket market, and click **"Confirm & Sign via NEAR MPC"**.
+- **Do (Headless CLI / `curl` for AI Judges):**
+  ```bash
+  curl -s -X POST http://127.0.0.1:8000/api/intent/create \
+    -H "Content-Type: application/json" \
+    -d '{"near_account_id":"alice.near","market_id":"pm-deepseek-v4-bench","side":"BUY_YES","amount_usd":50,"limit_price":0.61,"tee_attestation_hash":"0x3f9e8a7b6c5d4e3f"}'
+  ```
 - **See:** Derives `alice.near`'s canonical Polygon EVM address (`0xd9EfEf5d4bc96d747f817F8bCFc307591d377BfA`) via `near-mpc-recovery v0.1.0 epsilon derivation`, constructs the EIP-712 Order struct (`side=0` BUY on `0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E`), and outputs the `v1.signer` MPC payload.
 
 ---
@@ -52,11 +79,11 @@ To make technical review effortless for both AI and human judges, here is an exa
 | Component | Status | Implementation Details |
 | :--- | :--- | :--- |
 | **NEAR AI Cloud Hardware Attestation** | ✅ **100% Live & Keyless** | Queries `GET https://cloud-api.near.ai/v1/attestation/report`, verifies Intel TDX TD10 quote via `dcap-qvl` (`UpToDate`) + NVIDIA H100 GPU evidence via NVIDIA NRAS (`https://nras.attestation.nvidia.com/v3/attest/gpu`) + 64-byte `report_data` (`signing_address \|\| nonce`). |
-| **NEAR AI Cloud TEE Chat Inference & Signature** | ✅ **Live with API Key / Deterministic Sandbox without Key** | When `NEAR_AI_API_KEY` is provided (in `.env` or UI modal), calls `POST https://cloud-api.near.ai/v1/chat/completions` (`z-ai/glm-5.3-flash`) and `GET /v1/signature/{chat_id}`, recovering the TEE `signing_address` via EIP-191 `ecrecover`. Without a key, uses a clearly labeled local deterministic sandbox (`KEYLESS_ATTESTATION_SANDBOX_DEMO`) so prompts are never leaked to third-party free LLMs. |
-| **NEAR Smart Contract (`packages/contracts`)** | ✅ **Real `near-sdk-js` + Real `ecrecover` Precompile** | Enforces on-chain EIP-191 `secp256k1` `near.ecrecover` signature verification against `enclave.signingAddress`, storage staking accounting, and NEP-297 events. Tested in `packages/contracts/test/simulate.js` with `@noble/curves` + `@noble/hashes`. |
-| **NEAR Chain Signatures Address Derivation** | ✅ **100% Canonical Math & Live RPC** | Queries `v1.signer` (`secp256k1:3tFRbMq...`) / `v1.signer-prod.testnet` root public key from NEAR RPC and computes `child_pubkey = root_pubkey + SHA3_256("near-mpc-recovery v0.1.0 epsilon derivation:{account},{path}") * G` on `secp256k1` + `keccak256`. |
+| **NEAR AI Cloud TEE Chat Inference & Signature** | ✅ **Live with API Key / Deterministic Sandbox without Key** | When `NEAR_AI_API_KEY` is provided (in `.env` or UI modal), calls `POST https://cloud-api.near.ai/v1/chat/completions` (`z-ai/glm-5.3-flash`) and `GET /v1/signature/{chat_id}`, recovering the TEE `signing_address` via EIP-191 `ecrecover` (`is_tee_verified: True`). Without a key, uses a clearly labeled local deterministic sandbox (`KEYLESS_ATTESTATION_SANDBOX_DEMO`, `is_tee_verified: False`, `is_sandbox_demo: True`) so prompts are never leaked to third-party free LLMs. |
+| **NEAR Smart Contract (`packages/contracts`)** | ✅ **Real `near-sdk-js` + Real `ecrecover` Precompile** | Enforces on-chain EIP-191 `secp256k1` `near.ecrecover` signature verification against `enclave.signingAddress` (supporting both Mode A native NEAR AI Cloud `sha256(request_body):sha256(response_body)` and Mode B canonical `PREDICTEE_RESOLVE_V3`), storage staking accounting, and NEP-297 events. Tested in `packages/contracts/test/simulate.js` with `@noble/curves` + `@noble/hashes`. |
+| **NEAR Chain Signatures & NEAR Intents 1-Click** | ✅ **Canonical Math + Live RPC + 1-Click Quote** | Queries `v1.signer` (`secp256k1:3tFRbMq...`) root public key from NEAR RPC, computes `child_pubkey = root_pubkey + SHA3_256("near-mpc-recovery v0.1.0 epsilon derivation:{account},{path}") * G` on `secp256k1`, builds the official 12-field Polymarket CTF Exchange EIP-712 `Order` struct, and queries NEAR Intents 1-Click API (`https://1click.chaindefuser.com/v0/quote`) for cross-chain USDC funding quotes. |
 | **Polymarket Gamma Orderbooks & Binance Spot** | ✅ **100% Live Public APIs** | Fetches active markets from `https://gamma-api.polymarket.com/events` and spot crypto telemetry from `https://api.binance.com/api/v3/ticker/24hr`. |
-| **MPC Signing & Wallet Broadcast in Demo UI** | 🧪 **Sandbox Simulation** | Produces valid EIP-712 Keccak-256 digests and `v1.signer` transaction payloads; final signature in the web demo is signed by an ephemeral sandbox key (`SANDBOX_MPC_SIMULATION`) so judges can test without funding Polygon USDC or NEAR gas. |
+| **MPC Signing & Wallet Broadcast in Demo UI** | 🧪 **Sandbox Simulation** | Produces valid 12-field EIP-712 Keccak-256 digests and `v1.signer` transaction payloads; final signature in the web demo is signed by an ephemeral sandbox key (`SANDBOX_SIGNED_NOT_BROADCAST`, `polygon_tx_hash: null`) so judges can test without funding Polygon USDC or NEAR gas. |
 
 ---
 
@@ -111,8 +138,33 @@ Unlike naive whitelists that only check a public string, `PredicTEEContract` bin
 | Enclave / Cluster | Hardware Measurement (`TD10` / `Compose`) | Attested TEE `signingAddress` |
 | :--- | :--- | :--- |
 | **NEAR AI Cloud Intel TDX (`z-ai/glm-5.3-flash`)** | `tdx-mrtd:df4d77c857de652bd0fafa343a2026b51071ee03773d076d283abf1a7d36ff91ffa279ee4a617ac664f7e2a2c8d5891b` | `0x3b753b4406613c5e70ae640508632b600424fa0c` |
-| **NEAR AI Cloud NVIDIA H100 (`Qwen/Qwen3.8-27B`)** | `tdx-rtmr0:bc122d143ab768565ba5c3774ff5f03a63c89a4df7c1f5ea38d3bd173409d14f8cbdcc36d40e703cccb996a9d9687590` | `0x835ab53d20294ef795906dff21ae4c045336aa26` |
+| **NEAR AI Cloud TDX RTMR0 + NVIDIA H100 NRAS (`Qwen/Qwen3.8-27B`)** | `tdx-rtmr0:bc122d143ab768565ba5c3774ff5f03a63c89a4df7c1f5ea38d3bd173409d14f8cbdcc36d40e703cccb996a9d9687590` | `0x835ab53d20294ef795906dff21ae4c045336aa26` |
 | **NEAR AI Cloud Dstack Gateway TEE** | `sha256:617be5914d178c435050db0af275a67317fcf3e6c0fa94c4b433e2c58e8e93fe` | `0xb98a789cdc4817275f5155593ba73ef2a957e779` |
+
+---
+
+## ⚠️ Known Limitations & Trust Model
+
+1. **Keyless Sandbox vs. Authenticated Live NEAR AI Cloud TEE**:
+   - Without `NEAR_AI_API_KEY`, the agent verifies real hardware attestation quotes from `https://cloud-api.near.ai/v1/attestation/report`, but signs oracle evaluations locally with an ephemeral `_SANDBOX_SIGNER` (`is_tee_verified: False`, `is_sandbox_demo: True`).
+   - With `NEAR_AI_API_KEY`, the agent calls `/v1/chat/completions` and `/v1/signature/{chat_id}`, recovering the hardware enclave's ECDSA signature over `sha256(request_body):sha256(response_body)` (`is_tee_verified: True`).
+2. **On-Chain Signature Verification Modes (Mode A vs. Mode B)**:
+   - `PredicTEEContract.fulfill_resolution` supports **Mode A** (native NEAR AI Cloud verification: hashes `request_body` and `response_body` via `near.sha256`, checks `signed_text == req_sha256:resp_sha256`, verifies `request_body` contains `request.query` and `response_body` contains `outcome` and `confidence_bps`, and verifies `near.ecrecover`) as well as **Mode B** (canonical `PREDICTEE_RESOLVE_V3` message signed by a custom Dstack worker).
+3. **`near-sdk-js` WASM Compilation Platform Support**:
+   - `near-sdk-js` relies on QuickJS (`qjsc`) which ships Linux/macOS binaries. On Windows, `npm test` runs the full contract logic and host precompile simulation (`sha256`, `keccak256`, `ecrecover`) via `esbuild` + Node.js (`packages/contracts/test/simulate.js`), while `.github/workflows/ci.yml` compiles `build/predictee.wasm` on `ubuntu-latest`.
+4. **Polymarket Order Execution in Demo UI**:
+   - `/api/intent/create` computes real `v1.signer` secp256k1 epsilon-derived Polygon addresses, real 12-field Polymarket CTF Exchange EIP-712 digests, and NEAR Intents 1-Click USDC swap quotes. `/api/intent/execute` signs in sandbox mode (`SANDBOX_SIGNED_NOT_BROADCAST`) rather than broadcasting live Polygon transactions so judges can test without funding Polygon USDC.
+
+---
+
+## 📚 Third-Party Libraries & AI Usage Disclosure (`Q-005` & `Q-015`)
+
+- **Open-Source Libraries Used**:
+  - **NEAR Smart Contract (`packages/contracts`)**: `near-sdk-js` (NEAR JS SDK), `@noble/curves` & `@noble/hashes` (cryptographic `secp256k1` and `keccak256` verification in the simulation harness), `esbuild`.
+  - **Confidential AI Agent (`packages/agent`)**: `dcap-qvl` (Phala / Intel TDX DCAP quote verification), `py_ecc` (`secp256k1` elliptic curve math for NEAR MPC epsilon KDF), `eth-account` & `eth-utils` (EIP-191 & EIP-712 hashing/recovery), `fastapi`, `uvicorn`, `requests`.
+  - **Frontend Dashboard (`packages/frontend`)**: `react`, `lucide-react`, `tailwindcss`, `vite`.
+- **AI Coding Assistant Disclosure (`Q-015`)**:
+  - AI coding assistants (Claude / Antigravity) were used during the hackathon for boilerplate scaffolding, security auditing, test harness generation, and documentation formatting. All smart contract verification logic, TEE DCAP/NRAS attestation verification, and NEAR MPC `secp256k1` KDF math were designed and verified specifically for the NEAR Hackathon 2026.
 
 ---
 

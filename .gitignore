@@ -6,4 +6,6 @@ __pycache__/
 .env
 **/.env
 packages/agent/oracle_state.json
+.agents/
+PROJECT_REVIEW_REPORT.md
 .DS_Store

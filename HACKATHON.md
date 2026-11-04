@@ -16,8 +16,9 @@
   - `agents` — **Agent Economy:** Autonomous TEE oracle agents that earn escrowed `$NEAR` bounties by resolving subjective inquiries and dispatching cross-contract callbacks.
   - `defi` — **Unstoppable DeFi:** Cross-chain prediction market order preparation and EIP-712 signing on Polygon Polymarket CLOB via NEAR Chain Signatures (`v1.signer`).
 - **Public GitHub Repository:** https://github.com/zhic49280-oss/predictee
+- **3-Minute Demo Walkthrough Script:** See [DEMO_GUIDE.md](./DEMO_GUIDE.md) *(attach recorded 3-minute video URL in the Hackathon submission portal and X post per `Q-012`)*
 - **Public X (Twitter) Demo Post Checklist:**
-  - Attach a demo video (mandatory for local-runnable demos per `Q-012`)
+  - Attach the 3-minute demo video (mandatory for local-runnable demos per `Q-012`)
   - State that PredicTEE was built at **NEAR HACKATHON**
   - Tag **`@NEARProtocol`** and **`#NEARHackathon`** (plus `@NearBuilders`, `@NEAR_hckthn`, `@NearLegion`)
 
@@ -28,12 +29,16 @@
 | NEAR Technology | How It Powers PredicTEE | Implementation File | Verification Command |
 | :--- | :--- | :--- | :--- |
 | **NEAR AI Cloud (TEE)** | Live hardware attestation (`GET https://cloud-api.near.ai/v1/attestation/report`) verified via Intel DCAP (`dcap-qvl`) & NVIDIA NRAS (`v3/attest/gpu`); signed completions via `/v1/signature/{chat_id}` (`z-ai/glm-5.3-flash`, `Qwen/Qwen3.8-27B`) | `packages/agent/tee_engine.py`<br/>`packages/agent/verify_near_ai_tee.py` | `npm run verify:tee` |
-| **NEAR Smart Contracts (`near-sdk-js`)** | Request-Fulfill Oracle with storage staking, on-chain EIP-191 `secp256k1` `near.ecrecover` verification of TEE `signingAddress`, bounty escrow, callback dispatch, and NEP-297 events | `packages/contracts/src/index.ts` | `npm run contracts:test` |
-| **NEAR Chain Signatures (`v1.signer`)** | Canonical `secp256k1` epsilon KDF derivation (`near-mpc-recovery v0.1.0 epsilon derivation:{account},{path}`) from live `v1.signer` root public key + EIP-712 Polymarket CTF Exchange (`chainId=137`) order hashing | `packages/agent/chain_sig.py` | `npm run agent:test` |
+| **NEAR Smart Contracts (`near-sdk-js`)** | Request-Fulfill Oracle with storage staking, on-chain EIP-191 `secp256k1` `near.ecrecover` verification of TEE `signingAddress` (`PREDICTEE_RESOLVE_V3` binding `request_id`, `outcome`, `confidence_bps`, and `resolver`), bounty escrow, callback dispatch, and NEP-297 events | `packages/contracts/src/index.ts` | `npm run contracts:test` |
+| **NEAR Chain Signatures (`v1.signer`)** | Canonical `secp256k1` epsilon KDF derivation (`near-mpc-recovery v0.1.0 epsilon derivation:{account},{path}`) from live `v1.signer` root public key + EIP-712 Polymarket CTF Exchange (`chainId=137`) cross-chain order intent hashing | `packages/agent/chain_sig.py` | `npm run agent:test` |
 
 ---
 
 ## 🧪 3. Judge Verification Steps: "Do X, See Y"
+
+### Step 0: Install Dependencies (Clean Environment Setup)
+- **Do:** `npm install && pip install -r packages/agent/requirements.txt`
+- **See:** Installs Node.js workspace dependencies (`near-sdk-js`, `@noble/curves`, `@noble/hashes`, `vite`) and Python confidential attestation dependencies (`dcap-qvl`, `py_ecc`, `eth-account`, `fastapi`).
 
 ### Step 1: Verify Live NEAR AI Cloud TEE Hardware Attestation (No API Key Needed)
 - **Do:** `npm run verify:tee`
@@ -41,18 +46,21 @@
 
 ### Step 2: Run Full Smart Contract & Agent Test Suite
 - **Do:** `npm test`
-- **See:** 8/8 NEAR Smart Contract simulation suites pass (including on-chain `near.ecrecover` verification and rejection of spoofed measurements / forged signatures / tampered outcomes) and 5/5 Python Agent suites pass.
+- **See:** 8/8 NEAR Smart Contract simulation suites pass (including on-chain `near.ecrecover` verification and rejection of spoofed measurements, forged signatures, decoupled signatures, MEV front-running, and tampered outcomes) and 5/5 Python Agent suites pass.
 
-### Step 3: Launch Interactive Web Dashboard & REST API
-- **Do:** Run `.\start.bat` (Windows) or `bash ./start.sh` (Linux/macOS).
-- **See:** Agent API starts on `http://127.0.0.1:8000` and Web UI opens on `http://localhost:5173`.
+### Step 3: Launch Interactive Web Dashboard & REST API (or Run Headless)
+- **Do (AI Judges / Headless CI):** `npm run verify:headless` *(or `.\verify_headless.bat` / `bash ./verify_headless.sh`)*
+- **Do (Human Judges Interactive UI):** Run `.\start.bat` (Windows) or `bash ./start.sh` (Linux/macOS).
+- **See:** Agent API starts on `http://127.0.0.1:8000` and Web UI opens on `http://localhost:5173` (or executes full headless E2E verification for Steps 4 & 5).
 
-### Step 4: Trigger TEE Resolution in UI
-- **Do:** Open `http://localhost:5173`, select pending request `req-3`, and click **"✨ Trigger TEE Resolution"**.
+### Step 4: Trigger TEE Resolution (UI or Headless CLI)
+- **Do (Browser UI):** Open `http://localhost:5173`, select pending request `req-3`, and click **"✨ Trigger TEE Resolution"**.
+- **Do (Headless CLI):** `curl -s -X POST http://127.0.0.1:8000/api/oracle/resolve -H "Content-Type: application/json" -d '{"request_id": "req-3"}'`
 - **See:** Request transitions `PENDING` $\rightarrow$ `RESOLVED`, displaying outcome, confidence BPS, TDX `mr_td`/`rt_mr0` measurement, and EIP-191 ECDSA signature.
 
-### Step 5: Prepare Cross-Chain Polymarket Order via NEAR MPC
-- **Do:** Open **"⚡ Prediction Markets & Alpha"** tab, pick any live Polymarket market, and click **"Confirm & Sign via NEAR MPC"**.
+### Step 5: Prepare Cross-Chain Polymarket Order via NEAR MPC (UI or Headless CLI)
+- **Do (Browser UI):** Open **"⚡ Prediction Markets & Alpha"** tab, pick any live Polymarket market, and click **"Confirm & Sign via NEAR MPC"**.
+- **Do (Headless CLI):** `curl -s -X POST http://127.0.0.1:8000/api/intent/create -H "Content-Type: application/json" -d '{"near_account_id":"alice.near","market_id":"pm-deepseek-v4-bench","side":"BUY_YES","amount_usd":50,"limit_price":0.61,"tee_attestation_hash":"0x3f9e8a7b6c5d4e3f"}'`
 - **See:** Computes `alice.near`'s canonical Polygon EVM address (`0xd9EfEf5d4bc96d747f817F8bCFc307591d377BfA`), generates the EIP-712 Order digest, and displays the `v1.signer` signature payload.
 
 ---

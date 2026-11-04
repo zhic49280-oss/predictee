@@ -332,11 +332,13 @@ async function runSimulation() {
         request_id: 'req-1',
         outcome: 'YES',
         confidence_bps: 9250,
+        resolver: 'relayer.predictee.near',
         attestation_hash: '0x7a9f82d1c6b3e401',
         enclave_measurement: ATTESTED_ENCLAVE_MEASUREMENT,
         evidence_digest: '0xfeedface'
     });
     const forgedSig = signEip191(canonicalMsg, rogueKeypair.secretKey);
+    setContext('relayer.predictee.near', 0n);
     expectThrow(() => {
         contract.fulfill_resolution({
             request_id: 'req-1',
@@ -363,7 +365,37 @@ async function runSimulation() {
             ecdsa_signature: validSigForYes
         });
     }, 'Invalid TEE ECDSA Signature', 'Relayer outcome tampering rejected by on-chain ecrecover');
-    console.log('✅ All spoofing & tampering vectors rejected on-chain.\n');
+
+    // 4e. SEC-01 Guard: Decoupled signed_text (e.g. arbitrary chat hash) rejected!
+    const decoupledText = 'z-ai/glm-5.3-flash:aaaa:bbbb';
+    const decoupledSig = signEip191(decoupledText, teeKeypair.secretKey);
+    expectThrow(() => {
+        contract.fulfill_resolution({
+            request_id: 'req-1',
+            outcome: 'NO',
+            confidence_bps: 9900,
+            attestation_hash: '0x7a9f82d1c6b3e401',
+            enclave_measurement: ATTESTED_ENCLAVE_MEASUREMENT,
+            evidence_digest: '',
+            signed_text: decoupledText,
+            ecdsa_signature: decoupledSig
+        });
+    }, 'Invalid signed_text: must match canonical PREDICTEE_RESOLVE_V3 message', 'SEC-01 decoupled signed_text rejected');
+
+    // 4f. SEC-02 Guard: MEV Front-runner copying valid signature under attacker.near rejected!
+    setContext('attacker.near', 0n);
+    expectThrow(() => {
+        contract.fulfill_resolution({
+            request_id: 'req-1',
+            outcome: 'YES',
+            confidence_bps: 9250,
+            attestation_hash: '0x7a9f82d1c6b3e401',
+            enclave_measurement: ATTESTED_ENCLAVE_MEASUREMENT,
+            evidence_digest: '0xfeedface',
+            ecdsa_signature: validSigForYes
+        });
+    }, 'Invalid TEE ECDSA Signature', 'SEC-02 MEV front-running bounty theft rejected');
+    console.log('✅ All spoofing, tampering, decoupled-signature & MEV front-running vectors rejected on-chain.\n');
 
     // -------------------------------------------------------------
     // Test 5: Legitimate Cryptographic TEE Fulfillment & Bounty Payout
@@ -389,16 +421,17 @@ async function runSimulation() {
     if (resolution.signerAddress !== teeKeypair.address.toLowerCase()) {
         throw new Error(`Expected recovered signer ${teeKeypair.address}, got ${resolution.signerAddress}`);
     }
+    const expectedNetBounty1 = twoNear - BigInt(req1.storagePaidYocto || '0');
     const payoutTx = transfers.find(t => t.type === 'TRANSFER' && t.account === 'relayer.predictee.near');
-    if (!payoutTx || payoutTx.amount !== twoNear) {
-        throw new Error('Expected 2 NEAR bounty transfer to relayer.predictee.near');
+    if (!payoutTx || payoutTx.amount !== expectedNetBounty1) {
+        throw new Error(`Expected net bounty transfer ${expectedNetBounty1} yoctoNEAR (after storage staking deduction) to relayer.predictee.near`);
     }
     const callbackTx = transfers.find(t => t.type === 'CROSS_CONTRACT_CALL');
     if (!callbackTx || callbackTx.functionName !== 'on_oracle_resolved') {
         throw new Error('Expected cross-contract callback to on_oracle_resolved');
     }
     console.log(`  ✓ Verified TEE ECDSA signer (${resolution.signerAddress}) via near.ecrecover`);
-    console.log('  ✓ Paid 2 NEAR bounty to relayer & dispatched callback to market.predictee.near');
+    console.log('  ✓ Paid net NEAR bounty (after storage staking retention) to relayer & dispatched callback to market.predictee.near');
 
     // Verify ECDSA signature replay protection on req-2
     expectThrow(() => {
@@ -412,8 +445,59 @@ async function runSimulation() {
             signed_text: canonicalMsg,
             ecdsa_signature: validSigForYes
         });
-    }, 'TEE ECDSA signature replay rejected', 'ECDSA signature replay rejected');
-    console.log('  ✓ Signature replay protection verified.\n');
+    }, 'Invalid signed_text: must match canonical PREDICTEE_RESOLVE_V3 message', 'Cross-request signature replay rejected');
+
+    // Verify Native NEAR AI Cloud (/v1/signature/{chat_id}) Mode A verification on a new request (req-3)
+    setContext('alice.near', oneNear);
+    const req3Id = contract.request_resolution({
+        query: 'Will Ethereum Pectra upgrade activate on mainnet in 2026?',
+        category: 'Crypto'
+    });
+    const nativeReqBody = JSON.stringify({
+        model: 'z-ai/glm-5.3-flash',
+        messages: [{ role: 'user', content: 'Will Ethereum Pectra upgrade activate on mainnet in 2026?' }]
+    });
+    const nativeRespBody = JSON.stringify({
+        id: 'chatcmpl-native-1',
+        choices: [{ message: { content: '{"outcome":"YES","confidence_bps":9100,"rationale":"Verified on-chain activation epoch."}' } }]
+    });
+    const reqSha = createHash('sha256').update(nativeReqBody, 'utf8').digest('hex');
+    const respSha = createHash('sha256').update(nativeRespBody, 'utf8').digest('hex');
+    const nativeSignedText = `${reqSha}:${respSha}`;
+    const nativeSig = signEip191(nativeSignedText, teeKeypair.secretKey);
+
+    setContext('relayer.predictee.near', 0n);
+    // Reject tampered outcome when using Native NEAR AI Cloud request_body/response_body verification
+    expectThrow(() => {
+        contract.fulfill_resolution({
+            request_id: req3Id,
+            outcome: 'NO', // Does not match response_body ("YES")
+            confidence_bps: 9100,
+            attestation_hash: '0xnativequote',
+            enclave_measurement: ATTESTED_ENCLAVE_MEASUREMENT,
+            signed_text: nativeSignedText,
+            ecdsa_signature: nativeSig,
+            request_body: nativeReqBody,
+            response_body: nativeRespBody
+        });
+    }, 'Invalid response_body: does not match submitted outcome and confidence_bps', 'Native NEAR AI Cloud response_body tampering rejected');
+
+    // Legitimate Native NEAR AI Cloud Mode A fulfillment
+    const nativeRes = contract.fulfill_resolution({
+        request_id: req3Id,
+        outcome: 'YES',
+        confidence_bps: 9100,
+        attestation_hash: '0xnativequote',
+        enclave_measurement: ATTESTED_ENCLAVE_MEASUREMENT,
+        signed_text: nativeSignedText,
+        ecdsa_signature: nativeSig,
+        request_body: nativeReqBody,
+        response_body: nativeRespBody
+    });
+    if (nativeRes.outcome !== 'YES' || nativeRes.signerAddress !== teeKeypair.address.toLowerCase()) {
+        throw new Error('Native NEAR AI Cloud Mode A verification failed');
+    }
+    console.log('  ✓ Verified Native NEAR AI Cloud (/v1/signature/{chat_id} sha256(req):sha256(resp)) Mode A on-chain.\n');
 
     // -------------------------------------------------------------
     // Test 6: Request Cancellation & Deposit Refund
@@ -431,23 +515,24 @@ async function runSimulation() {
     if (req2After.status !== 'CANCELLED') {
         throw new Error('Expected req-2 status to be CANCELLED');
     }
+    const expectedRefund = oneNear - BigInt(req2After.storagePaidYocto || '0');
     const refundTx = transfers.find(t => t.type === 'TRANSFER' && t.account === 'bob.near');
-    if (!refundTx || refundTx.amount !== oneNear) {
-        throw new Error('Expected 1 NEAR refund to bob.near');
+    if (!refundTx || refundTx.amount !== expectedRefund) {
+        throw new Error(`Expected net refund ${expectedRefund} yoctoNEAR (after storage staking deduction) to bob.near`);
     }
-    console.log('  ✓ Cancelled req-2 and refunded 1 NEAR to bob.near\n');
+    console.log('  ✓ Cancelled req-2 and refunded net bounty (after storage staking deduction) to bob.near\n');
 
     // -------------------------------------------------------------
     // Test 7: Bounded Paginated Views & Global Stats
     // -------------------------------------------------------------
     console.log('--- TEST 7: Bounded Paginated Views, Filter Queries & Global Stats ---');
     const resolvedList = contract.list_requests({ status: 'RESOLVED' });
-    if (resolvedList.length !== 1 || resolvedList[0].requestId !== 'req-1') {
-        throw new Error('Expected 1 resolved request (req-1)');
+    if (resolvedList.length !== 2 || resolvedList[0].requestId !== 'req-1' || resolvedList[1].requestId !== 'req-3') {
+        throw new Error('Expected 2 resolved requests (req-1 and req-3)');
     }
     const stats = contract.get_stats();
     console.log('  Oracle Stats:', JSON.stringify(stats));
-    if (stats.totalRequests !== 2 || stats.resolvedCount !== 1 || stats.cancelledCount !== 1) {
+    if (stats.totalRequests !== 3 || stats.resolvedCount !== 2 || stats.cancelledCount !== 1) {
         throw new Error('Stats mismatch');
     }
     console.log('  ✓ Bounded pagination & global stats verified\n');

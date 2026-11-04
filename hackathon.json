@@ -1,0 +1,24 @@
+{
+  "name": "PredicTEE",
+  "tagline": "Verifiable TEE AI Oracle & Cross-Chain Prediction Settlement Engine on NEAR",
+  "hackathon": "NEAR Hackathon 2026",
+  "tracks": [
+    "privacy",
+    "agents",
+    "defi"
+  ],
+  "repository": "https://github.com/zhic49280-oss/predictee",
+  "technologies": [
+    "NEAR AI Cloud TEE (Intel TDX TD10 DCAP + NVIDIA H100 NRAS)",
+    "NEAR Smart Contracts (near-sdk-js + on-chain EIP-191 near.ecrecover)",
+    "NEAR Chain Signatures (v1.signer canonical secp256k1 epsilon derivation + EIP-712)",
+    "NEAR Intents 1-Click API (cross-chain USDC swap quote integration)"
+  ],
+  "verification": {
+    "install": "npm install && pip install -r packages/agent/requirements.txt",
+    "hardware_attestation_keyless": "npm run verify:tee",
+    "test_suite": "npm test",
+    "headless_e2e": "npm run verify:headless",
+    "healthcheck_endpoint": "http://127.0.0.1:8000/api/health"
+  }
+}

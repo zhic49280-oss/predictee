@@ -12,6 +12,12 @@ echo "========================================================================"
 echo "[1/3] Running NEAR Smart Contract & Agent Verification Suite..."
 npm test
 
+if [ "$1" = "--headless" ]; then
+  echo "[2/3] Running Headless E2E Verification Suite..."
+  npm run verify:headless
+  exit 0
+fi
+
 echo "[2/3] Starting Confidential Agent API on http://127.0.0.1:8000 ..."
 (cd packages/agent && python3 agent.py) &
 AGENT_PID=$!
