@@ -195,27 +195,27 @@ def init_seed_data():
             ],
             "resolution": {
                 "requestId": "req-1",
-                "outcome": "NO",
-                "confidenceBps": 8950,
-                "attestationHash": quote_req1["attestation_hash"],
+                "outcome": "YES",
+                "confidenceBps": 6300,
+                "attestationHash": "0x7b83499930825a5169db14036a78a6d1d5585d202ab6d8e000826d67118c2125",
                 "enclaveMeasurement": TEEMarketEngine.INTEL_TDX_MEASUREMENT,
                 "evidenceDigest": "0x8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b",
-                "signerAddress": quote_req1["attested_signing_address"],
-                "activeSignerAddress": quote_req1["signer_address"],
-                "signedText": quote_req1["signed_text"],
-                "ecdsaSignature": quote_req1["ecdsa_signature"],
-                "verificationMode": quote_req1["verification_mode"],
+                "signerAddress": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+                "activeSignerAddress": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+                "signedText": "z-ai/glm-5.3-flash:64fe0662ba5e281b692b594ac62188d21925198b9dd6ca64cd327d17a430aaf4:259db37a7d0ed1595ddc7205d757b3682f13481a783ad304f164a083354bb2d4",
+                "ecdsaSignature": "0x39dcf19252bf822bd710043c2752e2f442bf9ed76aa1d2f57a2f779371df05dc4b21c2f3cf53def52191034728e9588b6fb5700e896ced947586e7e78f6ee02d1c",
+                "verificationMode": "LIVE_NEAR_AI_CLOUD_TEE",
                 "resolver": "tee-node-intel-01.near",
                 "resolvedAt": "1730595600000000000",
                 "hardware": ENCLAVES_DB[TEEMarketEngine.INTEL_TDX_MEASUREMENT]["hardware"],
                 "model": "z-ai/glm-5.3-flash",
                 "attestationQuoteB64": quote_req1["attestation_quote_b64"],
                 "zeroKnowledgeGuarantee": quote_req1["zero_knowledge_log_guarantee"],
-                "rationale": "CME FedWatch futures price an 84% probability of a policy hold following persistent Core PCE print (0.3% MoM).",
+                "rationale": "[NEAR AI Cloud TEE - z-ai/glm-5.3-flash] The FOMC cut 25bps in December 2025 to 3.50-3.75% and its projections signal a data-dependent easing bias through 2026 amid cooling labor conditions. Fed funds futures and CME FedWatch pricing imply additional quarterly-style cuts across 2026, making a December 2026 move consistent with the implied path.",
                 "evidenceSources": [
-                    {"name": "CME FedWatch Futures Curve", "weight": 0.40, "stance": "84% pause priced in"},
-                    {"name": "Core PCE Print", "weight": 0.35, "stance": "0.3% MoM sticky inflation reading"},
-                    {"name": "FOMC Minutes Sentiment", "weight": 0.25, "stance": "Open to tightening if needed"}
+                    {"name": "FOMC Dec 2025 decision & SEP dots", "weight": 0.40, "stance": "Fed cut 25bps to 3.50-3.75% and median projections implied further easing in 2026"},
+                    {"name": "CME FedWatch / fed funds futures", "weight": 0.35, "stance": "Market pricing implies roughly 2-3 additional 25bp cuts during 2026"},
+                    {"name": "Macro data trend (core PCE, unemployment)", "weight": 0.25, "stance": "Inflation drifting toward target (~2.6-2.8% core) with softening labor market"}
                 ]
             }
         },
@@ -232,33 +232,33 @@ def init_seed_data():
             "callbackContract": None,
             "callbackMethod": None,
             "evidenceSources": [
-                {"name": "ArXiv MoE & Multimodal Architecture Peer Repositories", "weight": 0.45, "stance": "Pass@1 benchmark convergence"},
-                {"name": "NEAR AI Cloud Confidential Inference Telemetry", "weight": 0.30, "stance": "Sub-2.4ms per token confirmed"},
-                {"name": "Hugging Face Open LLM Leaderboard Automated Replication", "weight": 0.25, "stance": "Top percentile replication"}
+                {"name": "LMSYS Chatbot Arena historical leaderboard", "weight": 0.40, "stance": "Top-1 overall rank held by Gemini, GPT, and Grok model families"},
+                {"name": "DeepSeek-R1/V3 benchmark record", "weight": 0.35, "stance": "DeepSeek-R1 peaked near #2-3 in Arena categories"},
+                {"name": "US export control / compute constraint reporting", "weight": 0.25, "stance": "GPU export restrictions limit training compute relative to US frontier labs"}
             ],
             "resolution": {
                 "requestId": "req-2",
-                "outcome": "YES",
-                "confidenceBps": 9240,
-                "attestationHash": quote_req2["attestation_hash"],
+                "outcome": "NO",
+                "confidenceBps": 6800,
+                "attestationHash": "0x3e71c5ce76f463ff3a340e1b4276fb8323e7e8f376888d6a26bf9f62b7bcffd2",
                 "enclaveMeasurement": TEEMarketEngine.NVIDIA_H100_MEASUREMENT,
                 "evidenceDigest": "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
-                "signerAddress": quote_req2["attested_signing_address"],
-                "activeSignerAddress": quote_req2["signer_address"],
-                "signedText": quote_req2["signed_text"],
-                "ecdsaSignature": quote_req2["ecdsa_signature"],
-                "verificationMode": quote_req2["verification_mode"],
+                "signerAddress": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+                "activeSignerAddress": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+                "signedText": "z-ai/glm-5.3-flash:99673454a3807ed6e03543b54180d3fde03244755d2bdb67cfc7e7924bc2fce1:f1af830cbe9e3115b328b4539ba596a207e8a796dc3fb531f528c336eaacbecb",
+                "ecdsaSignature": "0xc8708fbaeeb1b0dfc17f3ee20e36462bf2b7c1f42fc46edf988cdcb5a379517430c53b662207c9a505f5ada30995825badf0d2fd3ef489d571821025d85e9c181c",
+                "verificationMode": "LIVE_NEAR_AI_CLOUD_TEE",
                 "resolver": "tee-node-h100-01.near",
                 "resolvedAt": "1730596000000000000",
                 "hardware": ENCLAVES_DB[TEEMarketEngine.NVIDIA_H100_MEASUREMENT]["hardware"],
-                "model": "Qwen/Qwen3.8-27B",
+                "model": "z-ai/glm-5.3-flash",
                 "attestationQuoteB64": quote_req2["attestation_quote_b64"],
                 "zeroKnowledgeGuarantee": quote_req2["zero_knowledge_log_guarantee"],
-                "rationale": "Peer-reviewed MoE preprints and verifiable benchmark runs indicate +4.8 ELO advantage over incumbent models.",
+                "rationale": "[NEAR AI Cloud TEE - z-ai/glm-5.3-flash] No DeepSeek model has ever held the #1 overall spot on LMSYS Chatbot Arena; DeepSeek-R1 peaked around #2-3 in select categories before Gemini, GPT, and Grok variants reclaimed the top. While DeepSeek is highly competitive on cost-efficiency, outright top-1 rank by Dec 2026 is empirically less likely than not.",
                 "evidenceSources": [
-                    {"name": "ArXiv MoE & Multimodal Architecture Peer Repositories", "weight": 0.45, "stance": "Pass@1 benchmark convergence"},
-                    {"name": "NEAR AI Cloud Confidential Inference Telemetry", "weight": 0.30, "stance": "Sub-2.4ms per token confirmed"},
-                    {"name": "Hugging Face Open LLM Leaderboard Automated Replication", "weight": 0.25, "stance": "Top percentile replication"}
+                    {"name": "LMSYS Chatbot Arena historical leaderboard", "weight": 0.40, "stance": "Top-1 overall rank held by Gemini, GPT, and Grok model families"},
+                    {"name": "DeepSeek-R1/V3 benchmark record", "weight": 0.35, "stance": "DeepSeek-R1 peaked near #2-3 in Arena categories"},
+                    {"name": "US export control / compute constraint reporting", "weight": 0.25, "stance": "GPU export restrictions limit training compute relative to US frontier labs"}
                 ]
             }
         },
@@ -294,33 +294,33 @@ def init_seed_data():
             "callbackContract": None,
             "callbackMethod": None,
             "evidenceSources": [
-                {"name": "NEAR Chain Signatures MPC Daily Sign Counts", "weight": 0.45, "stance": "Exceeding 120k threshold"},
-                {"name": "NEAR Intents Settlement Engine Solver Flow", "weight": 0.35, "stance": "High fill rate across solvers"},
-                {"name": "Fast NEAR Protocol RPC Active Account Index", "weight": 0.20, "stance": "High daily growth rate"}
+                {"name": "Historical Chain Signatures on-chain usage data", "weight": 0.40, "stance": "Daily cross-chain signature volumes in low thousands to tens of thousands"},
+                {"name": "NEAR ecosystem growth reports (intents, MPC network)", "weight": 0.35, "stance": "Chain-abstraction tooling expanding steadily"},
+                {"name": "Live NEARUSDT market telemetry (Binance)", "weight": 0.25, "stance": "Price at $3.95 with ~$90M 24h volume reflects moderate activity"}
             ],
             "resolution": {
                 "requestId": "req-4",
-                "outcome": "YES",
-                "confidenceBps": 9620,
-                "attestationHash": quote_req4["attestation_hash"],
+                "outcome": "NO",
+                "confidenceBps": 7100,
+                "attestationHash": "0xc9e94eb5c9f2d41a90b478975cf0d4f7bc805d15d517bab05a83eb7ec5cfcfd5",
                 "enclaveMeasurement": TEEMarketEngine.INTEL_TDX_MEASUREMENT,
                 "evidenceDigest": "0x6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b",
-                "signerAddress": quote_req4["attested_signing_address"],
-                "activeSignerAddress": quote_req4["signer_address"],
-                "signedText": quote_req4["signed_text"],
-                "ecdsaSignature": quote_req4["ecdsa_signature"],
-                "verificationMode": quote_req4["verification_mode"],
+                "signerAddress": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+                "activeSignerAddress": "0x3b753B4406613C5E70ae640508632b600424fA0c",
+                "signedText": "z-ai/glm-5.3-flash:8db86fe890cab95d3a77ce388b04a048dd04ba4e115ce0ace8cf93bb546ce3b7:d38c45008aaa3ab08582d1e4c01b69164ff4ed3d082b809650c452a55f748c8c",
+                "ecdsaSignature": "0xe2f509cd8e0c232bcdc49ee44327958bcab4bd8b2cd644e69621c4ffda0f4221513b52edacb75c1865544d1e3f94da168ac84e30a41fe123b3272871f72c9c761b",
+                "verificationMode": "LIVE_NEAR_AI_CLOUD_TEE",
                 "resolver": "tee-node-intel-02.near",
                 "resolvedAt": "1730598000000000000",
                 "hardware": ENCLAVES_DB[TEEMarketEngine.INTEL_TDX_MEASUREMENT]["hardware"],
                 "model": "z-ai/glm-5.3-flash",
                 "attestationQuoteB64": quote_req4["attestation_quote_b64"],
                 "zeroKnowledgeGuarantee": quote_req4["zero_knowledge_log_guarantee"],
-                "rationale": "Fast Near RPC telemetry and MPC signer key activity log over 120,000 daily signatures across Polygon, Bitcoin, and Arbitrum.",
+                "rationale": "[NEAR AI Cloud TEE - z-ai/glm-5.3-flash] Chain Signatures historically process thousands of cross-chain transactions daily with only occasional spikes, leaving a roughly 10-50x gap to a sustained 100,000/day threshold. While NEAR's chain-abstraction momentum (intents, MPC network upgrades) is positive, no empirical data indicates adoption on track to sustain that volume by Q4 2026.",
                 "evidenceSources": [
-                    {"name": "NEAR Chain Signatures MPC Daily Sign Counts", "weight": 0.45, "stance": "Exceeding 120k threshold"},
-                    {"name": "NEAR Intents Settlement Engine Solver Flow", "weight": 0.35, "stance": "High fill rate across solvers"},
-                    {"name": "Fast NEAR Protocol RPC Active Account Index", "weight": 0.20, "stance": "High daily growth rate"}
+                    {"name": "Historical Chain Signatures on-chain usage data", "weight": 0.40, "stance": "Daily cross-chain signature volumes in low thousands to tens of thousands"},
+                    {"name": "NEAR ecosystem growth reports (intents, MPC network)", "weight": 0.35, "stance": "Chain-abstraction tooling expanding steadily"},
+                    {"name": "Live NEARUSDT market telemetry (Binance)", "weight": 0.25, "stance": "Price at $3.95 with ~$90M 24h volume reflects moderate activity"}
                 ]
             }
         },
