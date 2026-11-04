@@ -1012,8 +1012,9 @@ def list_markets():
     """Returns live Polymarket events enriched with TEE confidential AI evaluations."""
     raw_markets = fetch_live_polymarket_events()
     enriched = []
-    for m in raw_markets:
-        analysis = tee_engine.evaluate_market(m)
+    has_live_key = bool(tee_engine.near_ai_api_key) and (os.getenv("PREDICTEE_TEST_MODE") != "1")
+    for idx, m in enumerate(raw_markets):
+        analysis = tee_engine.evaluate_market(m, use_live_ai=(has_live_key and idx < 2))
         enriched.append({
             **m,
             "ai_analysis": analysis
@@ -1029,7 +1030,8 @@ def get_market(market_id: str):
     if not market:
         raise HTTPException(status_code=404, detail="Market not found")
 
-    analysis = tee_engine.evaluate_market(market)
+    has_live_key = bool(tee_engine.near_ai_api_key) and (os.getenv("PREDICTEE_TEST_MODE") != "1")
+    analysis = tee_engine.evaluate_market(market, use_live_ai=has_live_key)
     return {
         "market": market,
         "ai_analysis": analysis
@@ -1068,7 +1070,7 @@ def reset_oracle_demo_state():
     so judges can repeatedly test Step 4 (`req-3` PENDING -> RESOLVED) cleanly.
     """
     with STATE_LOCK:
-        if os.path.exists(STATE_FILE_PATH):
+        if os.getenv("PREDICTEE_TEST_MODE") != "1" and os.path.exists(STATE_FILE_PATH):
             try:
                 os.remove(STATE_FILE_PATH)
             except OSError:

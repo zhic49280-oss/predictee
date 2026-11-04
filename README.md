@@ -28,13 +28,20 @@
 
 Judges and automated evaluation agents (**Claude Code** & **Codex**) can verify every layer of PredicTEE out of the box **without needing a secret API key**:
 
-### Step 0: Prerequisites & Dependency Installation
+### Step 0: Prerequisites, Dependency Installation & Optional `NEAR_AI_API_KEY` Setup
 - **Prerequisites:** Node.js 18+ and Python 3.10+
-- **Do:**
+- **Do (Install Dependencies):**
   ```bash
   npm install
   pip install -r packages/agent/requirements.txt
   ```
+- **Do (Optional — Enable Live Authenticated NEAR AI Cloud TEE Inference & Signing):**
+  ```bash
+  cp packages/agent/.env.example packages/agent/.env
+  # Edit packages/agent/.env and set:
+  # NEAR_AI_API_KEY=sk-... (from https://cloud.near.ai or https://nearbuilders.org/dashboard)
+  ```
+  *(You can also paste your `NEAR_AI_API_KEY` at runtime in the web dashboard by clicking the top-right **"🔑 Configure NEAR AI Key"** badge, or via `POST /api/config/ai-key`. If no key is set, PredicTEE still performs **100% live keyless hardware attestation** against `cloud-api.near.ai/v1/attestation/report` and uses a clearly labeled deterministic sandbox fallback for chat completions.)*
 - **See:** Installs `@noble/curves`, `@noble/hashes`, `near-sdk-js`, `dcap-qvl` (Intel DCAP quote verifier), `py_ecc` (`secp256k1`), `eth-account`, and `fastapi`.
 
 ### Step 1: Verify Live NEAR AI Cloud TEE Hardware Attestation (Keyless)

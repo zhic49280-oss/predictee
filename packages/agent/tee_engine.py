@@ -131,6 +131,7 @@ class TEEMarketEngine:
         self.near_ai_model = os.getenv("NEAR_AI_MODEL", "z-ai/glm-5.3-flash").strip()
         self._cached_live_attestation: Optional[Dict[str, Any]] = None
         self._cached_attestation_ts: float = 0.0
+        self._live_ai_cache: Dict[str, Dict[str, Any]] = {}
 
     def configure_ai_provider(
         self,
@@ -478,6 +479,9 @@ class TEEMarketEngine:
         safe_base_url = validate_near_ai_base_url(self.near_ai_base_url)
         safe_query = sanitize_oracle_input(query, max_len=MAX_QUERY_LEN)
         safe_category = sanitize_oracle_input(category, max_len=MAX_CATEGORY_LEN)
+        cache_key = f"{self.near_ai_model}:{safe_category}:{safe_query}"
+        if cache_key in self._live_ai_cache:
+            return self._live_ai_cache[cache_key]
         live_facts = self._fetch_live_context_facts(safe_query, safe_category)
         system_prompt = (
             "You are PredicTEE, a neutral, verifiable AI Oracle running inside a Confidential TEE Enclave on NEAR AI Cloud. "
@@ -519,7 +523,7 @@ class TEEMarketEngine:
                     {"role": "user", "content": user_content}
                 ],
                 "temperature": 0,
-                "max_tokens": 900,
+                "max_tokens": 1400,
                 "stream": False
             }
             body_json = json.dumps(payload)
@@ -584,13 +588,15 @@ class TEEMarketEngine:
                     else:
                         outcome = "INVALID"
                     conf_bps = max(6000, min(9900, int(parsed["confidence_bps"])))
-                    return {
+                    result_obj = {
                         "outcome": outcome,
                         "confidence_bps": conf_bps,
                         "rationale": f"[NEAR AI Cloud TEE - {model_to_use}] " + str(parsed.get("rationale", "")),
                         "evidence_sources": parsed.get("evidence_sources", []),
                         "live_signature_data": sig_data
                     }
+                    self._live_ai_cache[cache_key] = result_obj
+                    return result_obj
         except Exception as e:
             print(f"[NEAR AI Cloud TEE] Notice: {e}, using deterministic sandbox fallback.")
         return None
