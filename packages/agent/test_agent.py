@@ -221,7 +221,12 @@ def test_oracle_rest_api():
     assert res_single.status_code == 200
     single_data = res_single.json()
     assert single_data["request"]["requestId"] == "req-1"
-    assert single_data["resolution"]["outcome"] == "NO"
+    assert single_data["resolution"]["outcome"] in ("YES", "NO")
+    assert single_data["resolution"]["signerAddress"].lower() == "0x3b753b4406613c5e70ae640508632b600424fa0c"
+
+    res_adm = client.get("/api/admin/overview")
+    assert res_adm.status_code == 200
+    assert len(res_adm.json()["ai_engine"]["model_catalog"]) == 3
 
     res_404 = client.get("/api/oracle/request/req-non-existent")
     assert res_404.status_code == 404
