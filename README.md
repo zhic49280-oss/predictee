@@ -19,8 +19,8 @@
 | ![Live Oracle Explorer](./docs/screenshots/01-oracle-explorer-live-tee.png) | ![TEE Hardware Quote Inspector](./docs/screenshots/02-tee-hardware-quote-inspector.png) |
 | **Polymarket Alpha & Arbitrage Engine** | **NEAR Chain Signatures (`v1.signer`) 1-Click Order** |
 | ![Polymarket Alpha Engine](./docs/screenshots/03-polymarket-alpha-near-mpc.png) | ![NEAR MPC 1-Click Order](./docs/screenshots/05-near-mpc-1click-order.png) |
-| **Verified TEE Hardware Whitelist Registry** | **⚙️ Node Operator Admin & Model Routing Console** |
-| ![Verified TEE Hardware Registry](./docs/screenshots/04-tee-enclave-registry.png) | ![Operator Admin Console](./docs/screenshots/06-operator-admin-console.png) |
+| **Verified TEE Hardware Whitelist Registry** | **Pure Consumer Web3 dApp Interface (Zero Admin Clutter)** |
+| ![Verified TEE Hardware Registry](./docs/screenshots/04-tee-enclave-registry.png) | ![Pure Consumer Web3 dApp](./docs/screenshots/01-oracle-explorer-resolved.png) |
 | **Real NEAR Web3 Wallet Selector (Meteor / MyNearWallet)** | **Decoded Intel TDX Hardware Attestation Evidence** |
 | ![Connect NEAR Web3 Wallet](./docs/screenshots/07-connect-near-wallet.png) | ![Decoded TEE Hardware Quote](./docs/screenshots/02-tee-hardware-quote-inspector.png) |
 
@@ -45,7 +45,7 @@ Judges and automated evaluation agents (**Claude Code** & **Codex**) can verify 
   # Edit packages/agent/.env on the backend server and set:
   # NEAR_AI_API_KEY=sk-... (from https://cloud.near.ai or https://nearbuilders.org/dashboard)
   ```
-  *(Public users never need to enter an API key in the frontend. Node operators can switch active confidential models (`z-ai/glm-5.3-flash`, `Qwen/Qwen3.8-27B`, `Qwen/Qwen3.6-35B-A3B-FP8`), rotate the server `.env` key, and manage Oracle inquiries directly in the **⚙️ Operator Admin** console tab or via `/api/admin/*`.)*
+  *(Public users experience a 100% clean consumer Web3 dApp without admin clutter, exactly like Pump.fun or Polymarket. Node operators manage model routing, key rotation, and TEE diagnostics directly via the dedicated terminal CLI: `npm run operator` or `python packages/agent/operator_cli.py`.)*
 - **See:** Installs `@noble/curves`, `@noble/hashes`, `near-sdk-js`, `dcap-qvl` (Intel DCAP quote verifier), `py_ecc` (`secp256k1`), `eth-account`, and `fastapi`.
 
 ### Step 1: Verify Live NEAR AI Cloud TEE Hardware Attestation (Keyless)
@@ -90,6 +90,23 @@ Judges and automated evaluation agents (**Claude Code** & **Codex**) can verify 
     -d '{"near_account_id":"alice.near","market_id":"pm-deepseek-v4-bench","side":"BUY_YES","amount_usd":50,"limit_price":0.61,"tee_attestation_hash":"0x3f9e8a7b6c5d4e3f"}'
   ```
 - **See:** Derives `alice.near`'s canonical Polygon EVM address (`0xd9EfEf5d4bc96d747f817F8bCFc307591d377BfA`) via `near-mpc-recovery v0.1.0 epsilon derivation`, constructs the EIP-712 Order struct (`side=0` BUY on `0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E`), and outputs the `v1.signer` MPC payload.
+
+### Step 6: Node Operator Terminal CLI (Confidential Model Routing & Key Rotation)
+- **Do (Operator Terminal):**
+  ```bash
+  # Check node status, active hardware enclaves, and .env configuration
+  npm run operator status
+
+  # Hot-switch confidential TEE model (persisted to server .env and running agent)
+  npm run operator model Qwen/Qwen3.8-27B
+
+  # Safely rotate server NEAR AI API key without exposing it to frontend users
+  npm run operator key sk-your-key-here
+
+  # Run interactive terminal menu
+  npm run operator
+  ```
+- **See:** Displays full node diagnostics, Intel TDX/NVIDIA H100 hardware verification status, and active model routing from the operator's secure server console.
 
 ---
 
