@@ -670,6 +670,67 @@ def list_accounts():
         })
     return {"accounts": enriched}
 
+@app.get("/api/account/lookup/{account_id}")
+def lookup_near_account(account_id: str):
+    """
+    Queries live NEAR Mainnet RPC for the specified account, retrieves on-chain balance,
+    and dynamically derives its deterministic Polygon EVM address via `v1.signer` MPC epsilon derivation.
+    """
+    clean_account = account_id.strip().lower()
+    if not clean_account:
+        raise HTTPException(status_code=400, detail="Account ID required")
+
+    derived_polygon = chain_sig_service.derive_polygon_address(clean_account)
+    rpc_url = "https://rpc.mainnet.near.org"
+    on_chain_balance = "0.00 NEAR"
+    exists_on_chain = False
+
+    try:
+        rpc_resp = requests.post(
+            rpc_url,
+            json={
+                "jsonrpc": "2.0",
+                "id": "predictee-account-lookup",
+                "method": "query",
+                "params": {
+                    "request_type": "view_account",
+                    "finality": "final",
+                    "account_id": clean_account
+                }
+            },
+            timeout=5
+        )
+        if rpc_resp.status_code == 200:
+            res_json = rpc_resp.json()
+            if "result" in res_json and "amount" in res_json["result"]:
+                yocto_str = res_json["result"]["amount"]
+                yocto_int = int(yocto_str)
+                near_val = yocto_int / (10**24)
+                on_chain_balance = f"{near_val:.2f} NEAR"
+                exists_on_chain = True
+    except Exception as e:
+        logger.warning("NEAR RPC lookup for %s failed: %s", clean_account, e)
+
+    return {
+        "accountId": clean_account,
+        "nearBalance": on_chain_balance,
+        "existsOnChain": exists_on_chain,
+        "derivedPolygonAddress": derived_polygon,
+        "label": "Live NEAR Mainnet Account" if exists_on_chain else "Unfunded Mainnet Account",
+        "mpcContract": "v1.signer",
+        "isLiveWallet": True
+    }
+
+class AdminAuthPayload(BaseModel):
+    password: str
+
+@app.post("/api/admin/auth")
+def verify_admin_auth(payload: AdminAuthPayload):
+    admin_secret = os.getenv("PREDICTEE_ADMIN_TOKEN", "admin123").strip()
+    if payload.password.strip() == admin_secret:
+        return {"authenticated": True, "token": "predictee-operator-session-active"}
+    raise HTTPException(status_code=401, detail="Invalid operator access token")
+
 # ==========================================
 # NEAR Oracle REST Endpoints
 # ==========================================

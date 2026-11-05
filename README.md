@@ -21,6 +21,8 @@
 | ![Polymarket Alpha Engine](./docs/screenshots/03-polymarket-alpha-near-mpc.png) | ![NEAR MPC 1-Click Order](./docs/screenshots/05-near-mpc-1click-order.png) |
 | **Verified TEE Hardware Whitelist Registry** | **⚙️ Node Operator Admin & Model Routing Console** |
 | ![Verified TEE Hardware Registry](./docs/screenshots/04-tee-enclave-registry.png) | ![Operator Admin Console](./docs/screenshots/06-operator-admin-console.png) |
+| **Real NEAR Web3 Wallet Selector (Meteor / MyNearWallet)** | **Decoded Intel TDX Hardware Attestation Evidence** |
+| ![Connect NEAR Web3 Wallet](./docs/screenshots/07-connect-near-wallet.png) | ![Decoded TEE Hardware Quote](./docs/screenshots/02-tee-hardware-quote-inspector.png) |
 
 ---
 

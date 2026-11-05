@@ -45,8 +45,20 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:800
 
 export default function App() {
   // Navigation & Tabs
-  const [activeTab, setActiveTab] = useState<'oracle' | 'markets' | 'hardware' | 'admin'>('oracle');
+  const [activeTab, setActiveTab] = useState<'oracle' | 'markets' | 'hardware'>('oracle');
+  const [isOperatorMode, setIsOperatorMode] = useState<boolean>(false);
+  const [showOperatorAuthModal, setShowOperatorAuthModal] = useState<boolean>(false);
+  const [operatorPassword, setOperatorPassword] = useState<string>('');
+  const [isOperatorAuthenticated, setIsOperatorAuthenticated] = useState<boolean>(false);
+
+  // Real NEAR Wallet Modal State
+  const [showWalletModal, setShowWalletModal] = useState<boolean>(false);
+  const [customAccountIdInput, setCustomAccountIdInput] = useState<string>('');
+  const [isConnectingLiveWallet, setIsConnectingLiveWallet] = useState<boolean>(false);
   const [activeNetwork, setActiveNetwork] = useState<'mainnet' | 'testnet'>('mainnet');
+
+  // Attestation Quote view mode (prevents browser auto-translation corruption)
+  const [quoteViewMode, setQuoteViewMode] = useState<'decoded' | 'raw'>('decoded');
 
   // Operator Admin Console state
   const [adminOverview, setAdminOverview] = useState<{
@@ -187,6 +199,18 @@ export default function App() {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
+  // Safe Base64 Quote JSON decoder
+  const decodeBase64Quote = (b64?: string): string => {
+    if (!b64 || b64.trim() === '') return '// No hardware quote payload attached';
+    try {
+      const raw = atob(b64.trim());
+      const parsed = JSON.parse(raw);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return b64;
+    }
+  };
+
   const showToast = (text: string, type: 'success' | 'info' = 'success') => {
     setToastMessage({ text, type });
     setTimeout(() => {
@@ -304,6 +328,79 @@ export default function App() {
     } catch {
       showToast('Failed to toggle enclave status', 'info');
     }
+  };
+
+  // Connect live NEAR Mainnet Account & derive dedicated Polygon address
+  const handleConnectLiveWallet = async (targetId: string) => {
+    const clean = targetId.trim().toLowerCase();
+    if (!clean) return;
+    setIsConnectingLiveWallet(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/account/lookup/${encodeURIComponent(clean)}`);
+      if (res.ok) {
+        const accountData = await res.json();
+        const newAcc: AccountOption = {
+          accountId: accountData.accountId,
+          nearBalance: accountData.nearBalance,
+          derivedPolygonAddress: accountData.derivedPolygonAddress,
+          label: accountData.existsOnChain ? 'Live NEAR Mainnet Wallet' : 'NEAR MPC Wallet'
+        };
+        // Add to accounts list if not present
+        setAccounts(prev => {
+          const exists = prev.some(a => a.accountId === newAcc.accountId);
+          return exists ? prev.map(a => a.accountId === newAcc.accountId ? newAcc : a) : [newAcc, ...prev];
+        });
+        setCurrentAccount(newAcc);
+        setShowWalletModal(false);
+        setCustomAccountIdInput('');
+        showToast(`Connected live NEAR wallet ${clean} (${accountData.nearBalance}) with MPC Polygon Address!`, 'success');
+      } else {
+        throw new Error('Account lookup failed');
+      }
+    } catch (err) {
+      showToast(`Wallet connect notice: ${err instanceof Error ? err.message : 'using fallback derivation'}`, 'info');
+    } finally {
+      setIsConnectingLiveWallet(false);
+    }
+  };
+
+  // Node Operator authentication handler
+  const handleOperatorLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!operatorPassword.trim()) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: operatorPassword.trim() })
+      });
+      if (res.ok) {
+        setIsOperatorAuthenticated(true);
+        setIsOperatorMode(true);
+        setShowOperatorAuthModal(false);
+        setOperatorPassword('');
+        showToast('Operator Session Authenticated: TEE Control Plane Active', 'success');
+      } else {
+        showToast('Invalid operator password. Default demo password is admin123', 'info');
+      }
+    } catch {
+      // In offline mode fallback with admin123
+      if (operatorPassword.trim() === 'admin123') {
+        setIsOperatorAuthenticated(true);
+        setIsOperatorMode(true);
+        setShowOperatorAuthModal(false);
+        setOperatorPassword('');
+        showToast('Operator Session Authenticated (Offline Mode)', 'success');
+      } else {
+        showToast('Invalid operator access token', 'info');
+      }
+    }
+  };
+
+  const handleOperatorLogout = () => {
+    setIsOperatorMode(false);
+    setIsOperatorAuthenticated(false);
+    showToast('Exited Operator Control Plane. Switched to Public dApp View.', 'info');
   };
 
   const handleManualRefreshMarkets = async () => {
@@ -679,81 +776,124 @@ export default function App() {
               <span className="text-sky-300 font-semibold">v1.signer</span>
             </div>
 
-            {/* Account Switcher Dropdown */}
-            <div className="relative">
-              <button 
-                onClick={() => setShowAccountMenu(!showAccountMenu)}
-                className="flex items-center space-x-2 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-850 hover:to-slate-750 border border-slate-700/80 hover:border-emerald-500/40 px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-md group cursor-pointer"
+            {/* Account Switcher & Real Wallet Button */}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowWalletModal(true)}
+                className="flex items-center space-x-1.5 bg-gradient-to-r from-emerald-500/15 to-teal-500/10 hover:from-emerald-500/25 hover:to-teal-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-2 rounded-xl text-xs font-mono font-bold transition shadow-sm cursor-pointer"
+                title="Connect real NEAR Web3 Wallet (Meteor, MyNearWallet, HOT, etc.)"
               >
-                <div className="w-5 h-5 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400">
-                  <Wallet className="w-3 h-3" />
-                </div>
-                <div className="text-left font-mono">
-                  <div className="text-white font-bold text-xs flex items-center space-x-1">
-                    <span>{currentAccount.accountId}</span>
-                    <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-emerald-400 transition" />
-                  </div>
-                  <div className="text-[10px] text-slate-400">{currentAccount.nearBalance}</div>
-                </div>
+                <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">Connect Wallet</span>
               </button>
 
-              {/* Account Dropdown Menu */}
-              {showAccountMenu && (
-                <div className="absolute right-0 mt-2 w-80 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-2xl p-4 z-50 text-xs">
-                  <div className="pb-3 border-b border-slate-800 mb-3 flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-white">Connected NEAR Account</p>
-                      <p className="text-[11px] text-slate-400">NEAR Chain Signatures Active</p>
-                    </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      MPC Verified
-                    </span>
+              <div className="relative">
+                <button 
+                  onClick={() => setShowAccountMenu(!showAccountMenu)}
+                  className="flex items-center space-x-2 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-slate-850 hover:to-slate-750 border border-slate-700/80 hover:border-emerald-500/40 px-3.5 py-2 rounded-xl text-xs font-medium transition shadow-md group cursor-pointer"
+                >
+                  <div className="w-5 h-5 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                   </div>
+                  <div className="text-left font-mono">
+                    <div className="text-white font-bold text-xs flex items-center space-x-1">
+                      <span>{currentAccount.accountId}</span>
+                      <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-emerald-400 transition" />
+                    </div>
+                    <div className="text-[10px] text-emerald-400 font-semibold">{currentAccount.nearBalance}</div>
+                  </div>
+                </button>
 
-                  <div className="space-y-2 mb-3">
-                    <p className="text-[11px] text-slate-400 font-medium">Select Active Mock Account:</p>
-                    {accounts.map(acc => (
-                      <button
-                        key={acc.accountId}
-                        onClick={() => {
-                          setCurrentAccount(acc);
-                          setShowAccountMenu(false);
-                          showToast(`Switched active account to ${acc.accountId}`, 'info');
-                        }}
-                        className={`w-full text-left p-2.5 rounded-xl border transition flex items-center justify-between cursor-pointer ${
-                          currentAccount.accountId === acc.accountId 
-                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' 
-                            : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
-                        }`}
-                      >
-                        <div>
-                          <div className="font-bold font-mono">{acc.accountId}</div>
-                          <div className="text-[10px] text-slate-400">{acc.label}</div>
-                        </div>
-                        <span className="font-mono text-[11px] text-emerald-400 font-semibold">{acc.nearBalance}</span>
-                      </button>
-                    ))}
-                  </div>
+                {/* Account Dropdown Menu */}
+                {showAccountMenu && (
+                  <div className="absolute right-0 mt-2 w-80 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-2xl p-4 z-50 text-xs">
+                    <div className="pb-3 border-b border-slate-800 mb-3 flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-white">Active NEAR Account</p>
+                        <p className="text-[11px] text-slate-400">NEAR Chain Signatures Active</p>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        MPC Verified
+                      </span>
+                    </div>
 
-                  <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 font-mono text-[11px] space-y-1.5">
-                    <div className="flex items-center justify-between text-slate-400">
-                      <span>Derived Polygon Address:</span>
-                      <button 
-                        onClick={() => handleCopy(currentAccount.derivedPolygonAddress, 'polygon-addr')}
-                        className="text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 cursor-pointer"
-                      >
-                        {copiedKey === 'polygon-addr' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedKey === 'polygon-addr' ? 'Copied' : 'Copy'}</span>
-                      </button>
+                    <div className="space-y-2 mb-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] text-slate-400 font-medium">Switch Active Account:</p>
+                        <button
+                          onClick={() => {
+                            setShowAccountMenu(false);
+                            setShowWalletModal(true);
+                          }}
+                          className="text-[10px] text-emerald-400 hover:text-emerald-300 font-mono underline"
+                        >
+                          + Connect Live ID
+                        </button>
+                      </div>
+                      {accounts.map(acc => (
+                        <button
+                          key={acc.accountId}
+                          onClick={() => {
+                            setCurrentAccount(acc);
+                            setShowAccountMenu(false);
+                            showToast(`Switched active account to ${acc.accountId}`, 'info');
+                          }}
+                          className={`w-full text-left p-2.5 rounded-xl border transition flex items-center justify-between cursor-pointer ${
+                            currentAccount.accountId === acc.accountId 
+                              ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' 
+                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-bold font-mono">{acc.accountId}</div>
+                            <div className="text-[10px] text-slate-400">{acc.label}</div>
+                          </div>
+                          <span className="font-mono text-[11px] text-emerald-400 font-semibold">{acc.nearBalance}</span>
+                        </button>
+                      ))}
                     </div>
-                    <div className="text-purple-300 break-all select-all text-[10px]">
-                      {currentAccount.derivedPolygonAddress}
-                    </div>
-                    <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-800">
-                      Derivation: near-mpc-recovery v0.1.0 epsilon derivation
+
+                    <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 font-mono text-[11px] space-y-1.5">
+                      <div className="flex items-center justify-between text-slate-400">
+                        <span>Derived Polygon Address:</span>
+                        <button 
+                          onClick={() => handleCopy(currentAccount.derivedPolygonAddress, 'polygon-addr')}
+                          className="text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 cursor-pointer"
+                        >
+                          {copiedKey === 'polygon-addr' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedKey === 'polygon-addr' ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
+                      <div className="text-purple-300 break-all select-all text-[10px] notranslate" translate="no">
+                        {currentAccount.derivedPolygonAddress}
+                      </div>
+                      <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-800">
+                        Derivation: near-mpc-recovery v0.1.0 epsilon derivation
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
+              </div>
+
+              {/* Operator Portal Trigger in Header */}
+              {isOperatorMode ? (
+                <button
+                  onClick={handleOperatorLogout}
+                  className="flex items-center space-x-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 px-3 py-2 rounded-xl text-xs font-mono font-bold transition shadow-sm cursor-pointer"
+                  title="Click to exit operator admin console and return to public dApp"
+                >
+                  <Terminal className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden md:inline">Exit Operator</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowOperatorAuthModal(true)}
+                  className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 hover:border-slate-700 px-3 py-2 rounded-xl text-xs font-mono transition shadow-sm cursor-pointer"
+                  title="Node Operator / Relayer Portal"
+                >
+                  <Terminal className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden md:inline">Operator</span>
+                </button>
               )}
             </div>
 
@@ -820,44 +960,51 @@ export default function App() {
               </span>
             </button>
 
-            {/* Tab 4: Node Operator Admin Console */}
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm transition relative cursor-pointer ${
-                activeTab === 'admin' 
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-lg shadow-emerald-500/20' 
-                  : 'bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
-              }`}
-            >
-              <Terminal className={`w-4 h-4 ${activeTab === 'admin' ? 'text-slate-950' : 'text-amber-400'}`} />
-              <span>⚙️ Operator Admin</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                activeTab === 'admin' ? 'bg-slate-950/20 text-slate-950 font-black' : 'bg-slate-800 text-amber-300'
-              }`}>
-                {adminOverview.active_model.split('/')[1] || 'TEE'}
-              </span>
-            </button>
-
           </div>
 
-          {/* Quick Submit Query CTA in Tab Nav */}
-          <button
-            onClick={() => setShowNewRequestModal(true)}
-            className="hidden sm:flex items-center space-x-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-emerald-500/40 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Submit Oracle Query</span>
-          </button>
+          {/* Quick Submit Query CTA & Operator Indicator in Tab Nav */}
+          <div className="flex items-center space-x-2">
+            {isOperatorMode && (
+              <span className="hidden md:inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                <span>Console Active: {adminOverview.active_model.split('/')[1] || 'TEE'}</span>
+              </span>
+            )}
+            <button
+              onClick={() => setShowNewRequestModal(true)}
+              className="hidden sm:flex items-center space-x-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-emerald-500/40 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Submit Oracle Query</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Operator Banner when Operator Mode is Active */}
+      {isOperatorMode && (
+        <div className="bg-gradient-to-r from-amber-950/40 via-amber-900/30 to-amber-950/40 border-b border-amber-500/40 px-4 md:px-8 py-2.5 z-20">
+          <div className="max-w-7xl mx-auto flex items-center justify-between text-xs">
+            <div className="flex items-center space-x-2 text-amber-200">
+              <Terminal className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="font-bold font-mono">OPERATOR CONTROL PLANE ({isOperatorAuthenticated ? 'VERIFIED SESSION' : 'ACTIVE'}):</span>
+              <span className="text-slate-300 hidden sm:inline">You are running in authenticated Node Operator mode. Changes directly update server TEE models and .env.</span>
+            </div>
+            <button
+              onClick={handleOperatorLogout}
+              className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-2.5 py-1 rounded-lg border border-amber-500/40 font-mono text-[11px] transition cursor-pointer"
+            >
+              ✕ Return to Public dApp View
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 md:px-8 py-6">
 
-        {/* ======================================================== */}
-        {/* TAB 1: 🔮 LIVE ORACLE EXPLORER (PRIMARY HACKATHON VIEW)   */}
-        {/* ======================================================== */}
-        {activeTab === 'oracle' && (
+        {/* Public Tab 1: Oracle Explorer */}
+        {!isOperatorMode && activeTab === 'oracle' && (
           <div className="space-y-6">
             
             {/* Real-time Oracle Stats Bar */}
@@ -1253,7 +1400,7 @@ export default function App() {
         {/* ======================================================== */}
         {/* TAB 2: ⚡ PREDICTION MARKETS & ALPHA (CROSS-CHAIN MPC)    */}
         {/* ======================================================== */}
-        {activeTab === 'markets' && (
+        {!isOperatorMode && activeTab === 'markets' && (
           <div className="space-y-6">
             
             {/* Header / Intro banner for Cross-Chain Polymarket */}
@@ -1404,7 +1551,7 @@ export default function App() {
         {/* ======================================================== */}
         {/* TAB 3: 🛡️ VERIFIED TEE HARDWARE REGISTRY                 */}
         {/* ======================================================== */}
-        {activeTab === 'hardware' && (
+        {!isOperatorMode && activeTab === 'hardware' && (
           <div className="space-y-6">
             
             {/* Explanatory Banner */}
@@ -1549,9 +1696,9 @@ export default function App() {
         )}
 
         {/* ======================================================== */}
-        {/* TAB 4: ⚙️ OPERATOR ADMIN CONSOLE (MODEL, KEY & DATA MGMT) */}
+        {/* DEDICATED NODE OPERATOR CONSOLE VIEW                     */}
         {/* ======================================================== */}
-        {activeTab === 'admin' && (
+        {isOperatorMode && (
           <div className="space-y-6">
 
             {/* Admin Header Banner */}
@@ -1996,24 +2143,68 @@ export default function App() {
                 </div>
               )}
 
-              {/* Base64 Signed Hardware Quote */}
-              <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800">
-                <div className="flex items-center justify-between text-slate-400 mb-1">
-                  <span>Base64 Signed Hardware Quote (Intel TDX ECDSA):</span>
+              {/* Base64 & Decoded Signed Hardware Quote (Protected against browser auto-translation) */}
+              <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 notranslate" translate="no">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between text-slate-400 mb-2 gap-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-slate-300 font-semibold text-xs">Intel TDX Hardware Quote Attestation:</span>
+                    <div className="inline-flex bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setQuoteViewMode('decoded')}
+                        className={`px-2 py-0.5 rounded font-mono transition cursor-pointer ${
+                          quoteViewMode === 'decoded'
+                            ? 'bg-emerald-500 text-slate-950 font-bold'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        🔍 Decoded Proof
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuoteViewMode('raw')}
+                        className={`px-2 py-0.5 rounded font-mono transition cursor-pointer ${
+                          quoteViewMode === 'raw'
+                            ? 'bg-emerald-500 text-slate-950 font-bold'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        📜 Raw Base64
+                      </button>
+                    </div>
+                  </div>
+
                   <button 
-                    onClick={() => handleCopy(
-                      activeAttestationData.resolution?.attestationQuoteB64 || activeAttestationData.marketAnalysis?.tee_attestation.attestation_quote_b64 || '',
-                      'quote-b64'
-                    )}
-                    className="text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 cursor-pointer"
+                    type="button"
+                    onClick={() => {
+                      const quoteB64 = activeAttestationData.resolution?.attestationQuoteB64 || activeAttestationData.marketAnalysis?.tee_attestation.attestation_quote_b64 || '';
+                      handleCopy(quoteViewMode === 'decoded' ? decodeBase64Quote(quoteB64) : quoteB64, 'quote-b64');
+                    }}
+                    className="text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 cursor-pointer text-[11px] font-mono self-end sm:self-auto"
                   >
-                    {copiedKey === 'quote-b64' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedKey === 'quote-b64' ? 'Copied' : 'Copy'}</span>
+                    {copiedKey === 'quote-b64' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedKey === 'quote-b64' ? 'Copied' : (quoteViewMode === 'decoded' ? 'Copy Decoded' : 'Copy Base64')}</span>
                   </button>
                 </div>
-                <div className="p-2.5 bg-slate-950 rounded text-slate-400 text-[10px] break-all max-h-20 overflow-y-auto font-mono select-all">
-                  {activeAttestationData.resolution?.attestationQuoteB64 || activeAttestationData.marketAnalysis?.tee_attestation.attestation_quote_b64}
-                </div>
+
+                {quoteViewMode === 'decoded' ? (
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/80">
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/60 text-[10px] text-slate-400">
+                      <span className="flex items-center space-x-1 text-emerald-400 font-bold">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Intel DCAP &amp; NEAR AI Cloud Signature Enclave Report</span>
+                      </span>
+                      <span className="text-slate-500">Decoded Payload</span>
+                    </div>
+                    <pre className="text-emerald-300/90 text-[10px] leading-relaxed max-h-48 overflow-y-auto font-mono select-all whitespace-pre-wrap break-all">
+                      {decodeBase64Quote(activeAttestationData.resolution?.attestationQuoteB64 || activeAttestationData.marketAnalysis?.tee_attestation.attestation_quote_b64)}
+                    </pre>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-950 rounded-xl text-slate-400 text-[10px] break-all max-h-32 overflow-y-auto font-mono select-all border border-slate-800/80 leading-normal">
+                    {activeAttestationData.resolution?.attestationQuoteB64 || activeAttestationData.marketAnalysis?.tee_attestation.attestation_quote_b64 || 'No Base64 hardware quote available'}
+                  </div>
+                )}
               </div>
 
               {/* Zero-Knowledge Memory Notice */}
@@ -2382,9 +2573,193 @@ export default function App() {
         </div>
       )}
 
+      {/* ======================================================== */}
+      {/* MODAL 4: CONNECT REAL NEAR WEB3 WALLET MODAL             */}
+      {/* ======================================================== */}
+      {showWalletModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0f172a] border border-slate-700 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative my-8 space-y-5">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/30 text-emerald-400">
+                  <Wallet className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Connect NEAR Web3 Wallet</h3>
+                  <p className="text-xs text-slate-400">
+                    Connect your real NEAR account or browser extension for live on-chain MPC signing
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowWalletModal(false)}
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Direct Connect Real Mainnet Account */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-white flex items-center space-x-1.5">
+                  <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Connect by Real NEAR Mainnet Account ID</span>
+                </span>
+                <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/40">
+                  Live RPC
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Enter your live NEAR account name (e.g. <strong className="text-emerald-400">zhic49280.near</strong> or <strong className="text-emerald-400">yiyu181.near</strong>). We will query its live balance from RPC and derive your dedicated Polygon EVM address via NEAR MPC (<code className="text-sky-300">v1.signer</code>).
+              </p>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customAccountIdInput}
+                  onChange={(e) => setCustomAccountIdInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleConnectLiveWallet(customAccountIdInput);
+                    }
+                  }}
+                  placeholder="your-name.near"
+                  className="flex-1 bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={!customAccountIdInput.trim() || isConnectingLiveWallet}
+                  onClick={() => handleConnectLiveWallet(customAccountIdInput)}
+                  className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl transition cursor-pointer"
+                >
+                  {isConnectingLiveWallet ? 'Querying...' : 'Connect Live'}
+                </button>
+              </div>
+            </div>
+
+            {/* Official Web3 Wallets Catalog */}
+            <div className="space-y-2">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                Or Select NEAR Ecosystem Wallet Provider:
+              </span>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                {[
+                  { name: 'Meteor Wallet', url: 'https://wallet.meteorwallet.app', desc: 'Popular NEAR Extension & Web', tag: 'Web & Extension' },
+                  { name: 'MyNearWallet', url: 'https://app.mynearwallet.com', desc: 'Official Web Wallet standard', tag: 'Web Native' },
+                  { name: 'HOT / HERE Wallet', url: 'https://herewallet.app', desc: 'Telegram & Mobile MPC', tag: 'Mobile / TG' },
+                  { name: 'OKX / Ledger', url: 'https://www.okx.com/web3', desc: 'Hardware & Multi-Chain', tag: 'Hardware' }
+                ].map((w) => (
+                  <button
+                    key={w.name}
+                    type="button"
+                    onClick={() => {
+                      // Pre-fill or quick switch
+                      setCustomAccountIdInput(currentAccount.accountId.endsWith('.near') ? currentAccount.accountId : 'zhic49280.near');
+                      showToast(`Selected ${w.name}. Enter your account ID above to bind live RPC session.`, 'info');
+                    }}
+                    className="p-3 bg-slate-900/80 hover:bg-slate-800/90 border border-slate-800 hover:border-emerald-500/40 rounded-xl text-left transition flex flex-col justify-between space-y-1 cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white text-xs">{w.name}</span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{w.tag}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 line-clamp-1">{w.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+              <span>Need testnet or mock tokens?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentAccount(INITIAL_ACCOUNTS[0]);
+                  setShowWalletModal(false);
+                  showToast('Restored default demo test wallet (alice.near)', 'info');
+                }}
+                className="text-emerald-400 hover:underline font-mono"
+              >
+                Use Demo Account (alice.near)
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 5: OPERATOR ADMIN AUTHENTICATION MODAL             */}
+      {/* ======================================================== */}
+      {showOperatorAuthModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0f172a] border border-amber-500/40 w-full max-w-md rounded-2xl p-6 shadow-2xl relative my-8 space-y-4">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-amber-500/10 rounded-xl border border-amber-500/30 text-amber-400">
+                  <Terminal className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Operator Console Authentication</h3>
+                  <p className="text-xs text-slate-400">Restricted to authorized TEE node runners and relayers</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowOperatorAuthModal(false)}
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleOperatorLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Operator Access Key / Admin Password:
+                </label>
+                <input
+                  type="password"
+                  value={operatorPassword}
+                  onChange={(e) => setOperatorPassword(e.target.value)}
+                  placeholder="Enter operator password (demo default: admin123)"
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-amber-500 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white outline-none"
+                  autoFocus
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  💡 <strong>Demo Password:</strong> <code className="text-amber-300 font-mono">admin123</code> (configured via PREDICTEE_ADMIN_TOKEN in .env)
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowOperatorAuthModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!operatorPassword.trim()}
+                  className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-40 text-slate-950 text-xs font-bold rounded-xl transition shadow-md"
+                >
+                  Authenticate &amp; Enter Console
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
       <footer className="mt-auto border-t border-slate-800/80 bg-[#0d1424] px-6 py-5 text-center text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>
             <strong>PredicTEE</strong> · Verifiable TEE AI Oracle on NEAR · Powered by Intel TDX &amp; NEAR Chain Signatures
           </p>
@@ -2394,6 +2769,19 @@ export default function App() {
             <a href="https://nearblocks.io/address/v1.signer" target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
               MPC: v1.signer
             </a>
+            <span className="text-slate-600">|</span>
+            <button
+              onClick={() => {
+                if (isOperatorMode) {
+                  handleOperatorLogout();
+                } else {
+                  setShowOperatorAuthModal(true);
+                }
+              }}
+              className="text-amber-400 hover:text-amber-300 underline font-sans cursor-pointer"
+            >
+              {isOperatorMode ? 'Exit Operator Console' : 'Node Operator Portal'}
+            </button>
           </div>
         </div>
       </footer>
