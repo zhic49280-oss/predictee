@@ -63,6 +63,10 @@
 - **Do (Headless CLI):** `curl -s -X POST http://127.0.0.1:8000/api/intent/create -H "Content-Type: application/json" -d '{"near_account_id":"alice.near","market_id":"pm-deepseek-v4-bench","side":"BUY_YES","amount_usd":50,"limit_price":0.61,"tee_attestation_hash":"0x3f9e8a7b6c5d4e3f"}'`
 - **See:** Computes `alice.near`'s canonical Polygon EVM address (`0xd9EfEf5d4bc96d747f817F8bCFc307591d377BfA`), generates the EIP-712 Order digest, and displays the `v1.signer` signature payload.
 
+### Step 6: Node Operator Terminal CLI (Model Routing & Secure Key Rotation)
+- **Do (Terminal CLI):** `npm run operator status` *(or `python packages/agent/operator_cli.py`)*
+- **See:** Displays full operator node diagnostics, active Intel TDX/NVIDIA H100 enclave measurements, hot-model routing (`z-ai/glm-5.3-flash`, `Qwen/Qwen3.8-27B`), and safe server `.env` key rotation.
+
 ---
 
 ## 📄 4. License
