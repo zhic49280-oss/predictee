@@ -8,6 +8,7 @@ import threading
 import requests
 import json
 import time
+import base64
 import uvicorn
 
 from tee_engine import TEEMarketEngine, MAX_QUERY_LEN, MAX_CATEGORY_LEN
@@ -38,7 +39,11 @@ app.add_middleware(
 )
 
 tee_engine = TEEMarketEngine()
-chain_sig_service = NEARChainSignatureService()
+chain_sig_service = NEARChainSignatureService(network="mainnet")
+testnet_chain_sig_service = NEARChainSignatureService(network="testnet")
+
+def get_chain_sig_service(network: str = "mainnet") -> NEARChainSignatureService:
+    return testnet_chain_sig_service if (network or "").lower() == "testnet" else chain_sig_service
 
 STATE_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "oracle_state.json")
 STATE_LOCK = threading.RLock()
@@ -541,9 +546,16 @@ class CreateIntentRequest(BaseModel):
     amount_usd: float = Field(..., gt=0, le=10_000_000, description="Bet amount in USD (must be > 0)")
     limit_price: float = Field(..., ge=0.0, le=1.0, description="Limit price between 0.0 and 1.0")
     tee_attestation_hash: str = Field(..., min_length=2, max_length=256)
+    network: str = Field(default="mainnet", description="NEAR network: 'testnet' or 'mainnet'")
 
 class ExecuteIntentRequest(BaseModel):
     intent: Dict[str, Any]
+
+class ConfirmOnChainIntentRequest(BaseModel):
+    intent: Dict[str, Any]
+    near_tx_hash: str = Field(..., min_length=10, max_length=128)
+    mpc_signature: Optional[Dict[str, Any]] = None
+    network: str = Field(default="testnet")
 
 class CreateOracleRequestPayload(BaseModel):
     requester: str = Field(default="user.near", min_length=2, max_length=64, description="NEAR account ID submitting the oracle query")
@@ -552,6 +564,9 @@ class CreateOracleRequestPayload(BaseModel):
     bounty_near: float = Field(default=1.0, ge=0.01, le=1_000_000, description="Attached incentive bounty in NEAR tokens (>= 0.01 NEAR)")
     callback_contract: Optional[str] = Field(default=None, description="Optional NEAR smart contract for automated callback")
     callback_method: Optional[str] = Field(default=None, description="Callback function to invoke upon resolution")
+    near_tx_hash: Optional[str] = Field(default=None, description="Optional verified on-chain NEAR transaction hash")
+    contract_id: Optional[str] = Field(default=None, description="Optional target NEAR smart contract ID")
+    network: str = Field(default="testnet", description="Target NEAR network")
 
 class ResolveOracleQueryPayload(BaseModel):
     request_id: Optional[str] = Field(default=None, description="ID of open request in database")
@@ -670,18 +685,77 @@ def list_accounts():
         })
     return {"accounts": enriched}
 
-@app.get("/api/account/lookup/{account_id}")
-def lookup_near_account(account_id: str):
+@app.get("/api/contract/config")
+def get_deployed_contract_config(network: str = Query(default="testnet")):
     """
-    Queries live NEAR Mainnet RPC for the specified account, retrieves on-chain balance,
-    and dynamically derives its deterministic Polygon EVM address via `v1.signer` MPC epsilon derivation.
+    Returns deployed NEAR smart contract metadata (`deployed-testnet.json`) and live on-chain stats.
+    """
+    svc = get_chain_sig_service(network)
+    rpc_url = "https://rpc.testnet.near.org" if network == "testnet" else "https://rpc.mainnet.near.org"
+    explorer_base = "https://testnet.nearblocks.io" if network == "testnet" else "https://nearblocks.io"
+    meta_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "contracts", "deployed-testnet.json")
+    )
+    meta: Dict[str, Any] = {}
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception:
+            meta = {}
+
+    contract_id = meta.get("contractId") if network == "testnet" else svc.oracle_contract_id
+    contract_id = contract_id or svc.oracle_contract_id
+
+    live_stats = None
+    try:
+        r = requests.post(
+            rpc_url,
+            json={
+                "jsonrpc": "2.0",
+                "id": "predictee-contract-stats",
+                "method": "query",
+                "params": {
+                    "request_type": "call_function",
+                    "finality": "final",
+                    "account_id": contract_id,
+                    "method_name": "get_stats",
+                    "args_base64": base64.b64encode(b"{}").decode("utf-8")
+                }
+            },
+            timeout=5
+        )
+        if r.status_code == 200 and "result" in r.json() and "result" in r.json()["result"]:
+            raw_bytes = bytes(r.json()["result"]["result"])
+            live_stats = json.loads(raw_bytes.decode("utf-8"))
+    except Exception:
+        pass
+
+    return {
+        "network": network,
+        "contractId": contract_id,
+        "mpcContractId": svc.MPC_CONTRACT_ID,
+        "rpcUrl": rpc_url,
+        "explorerUrl": f"{explorer_base}/address/{contract_id}",
+        "deployTxHash": meta.get("deployTxHash"),
+        "liveOnChain": live_stats is not None,
+        "onChainStats": live_stats,
+    }
+
+@app.get("/api/account/lookup/{account_id}")
+def lookup_near_account(account_id: str, network: str = Query(default="mainnet")):
+    """
+    Queries live NEAR Testnet/Mainnet RPC for the specified account, retrieves on-chain balance,
+    and dynamically derives its deterministic Polygon EVM address via `v1.signer` / `v1.signer-prod.testnet`.
     """
     clean_account = account_id.strip().lower()
     if not clean_account:
         raise HTTPException(status_code=400, detail="Account ID required")
 
-    derived_polygon = chain_sig_service.derive_polygon_address(clean_account)
-    rpc_url = "https://rpc.mainnet.near.org"
+    net = "testnet" if network.lower() == "testnet" else "mainnet"
+    svc = get_chain_sig_service(net)
+    derived_polygon = svc.derive_polygon_address(clean_account)
+    rpc_url = "https://rpc.testnet.near.org" if net == "testnet" else "https://rpc.mainnet.near.org"
     on_chain_balance = "0.00 NEAR"
     exists_on_chain = False
 
@@ -709,15 +783,16 @@ def lookup_near_account(account_id: str):
                 on_chain_balance = f"{near_val:.2f} NEAR"
                 exists_on_chain = True
     except Exception as e:
-        logger.warning("NEAR RPC lookup for %s failed: %s", clean_account, e)
+        print(f"[Account Lookup] NEAR {net} RPC lookup for {clean_account} failed: {e}")
 
     return {
         "accountId": clean_account,
+        "network": net,
         "nearBalance": on_chain_balance,
         "existsOnChain": exists_on_chain,
         "derivedPolygonAddress": derived_polygon,
-        "label": "Live NEAR Mainnet Account" if exists_on_chain else "Unfunded Mainnet Account",
-        "mpcContract": "v1.signer",
+        "label": f"Live NEAR {net.capitalize()} Account" if exists_on_chain else f"Unfunded {net.capitalize()} Account",
+        "mpcContract": svc.MPC_CONTRACT_ID,
         "isLiveWallet": True
     }
 
@@ -833,6 +908,9 @@ def create_oracle_request(payload: CreateOracleRequestPayload):
     with STATE_LOCK:
         REQUEST_NONCE += 1
         request_id = f"req-{REQUEST_NONCE}"
+        svc = get_chain_sig_service(payload.network)
+        explorer_base = "https://testnet.nearblocks.io" if payload.network == "testnet" else "https://nearblocks.io"
+        tx_hash = payload.near_tx_hash.strip() if payload.near_tx_hash else None
         new_request = {
             "requestId": request_id,
             "requester": payload.requester.strip(),
@@ -845,19 +923,23 @@ def create_oracle_request(payload: CreateOracleRequestPayload):
             "resolvedAt": None,
             "callbackContract": payload.callback_contract,
             "callbackMethod": payload.callback_method,
-            "evidenceSources": evidence_sources
+            "evidenceSources": evidence_sources,
+            "nearTxHash": tx_hash,
+            "contractId": payload.contract_id or svc.oracle_contract_id,
+            "txExplorerUrl": f"{explorer_base}/txns/{tx_hash}" if tx_hash else None,
         }
         REQUESTS_DB[request_id] = new_request
         save_persisted_state()
 
     # Build NEAR transaction payload ready for user signing
-    tx = chain_sig_service.build_request_resolution_tx(
+    tx = svc.build_request_resolution_tx(
         requester_account_id=payload.requester,
         query=clean_query,
         category=clean_category,
         bounty_near=payload.bounty_near,
         callback_contract=payload.callback_contract,
-        callback_method=payload.callback_method
+        callback_method=payload.callback_method,
+        oracle_contract_id=payload.contract_id
     )
 
     return {
@@ -1108,7 +1190,8 @@ def create_betting_intent(req: CreateIntentRequest):
         raise HTTPException(status_code=404, detail="Market not found")
 
     token_id = market["token_id_yes"] if req.side == "BUY_YES" else market["token_id_no"]
-    intent = chain_sig_service.build_polymarket_order_intent(
+    svc = get_chain_sig_service(req.network)
+    intent = svc.build_polymarket_order_intent(
         near_account_id=req.near_account_id,
         market_id=req.market_id,
         token_id=token_id,
@@ -1122,6 +1205,17 @@ def create_betting_intent(req: CreateIntentRequest):
 @app.post("/api/intent/execute")
 def execute_betting_intent(req: ExecuteIntentRequest):
     executed = chain_sig_service.simulate_mpc_signing(req.intent)
+    return {"executed_order": executed}
+
+@app.post("/api/intent/confirm-onchain")
+def confirm_onchain_intent(req: ConfirmOnChainIntentRequest):
+    svc = get_chain_sig_service(req.network)
+    executed = svc.record_onchain_mpc_signature(
+        intent=req.intent,
+        near_tx_hash=req.near_tx_hash,
+        mpc_result=req.mpc_signature,
+        network=req.network
+    )
     return {"executed_order": executed}
 
 @app.post("/api/dev/reset")

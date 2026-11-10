@@ -49,6 +49,21 @@ class NEARChainSignatureService:
     POLYMARKET_CTF_EXCHANGE = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
     POLYGON_CHAIN_ID = 137
 
+    @staticmethod
+    def _load_deployed_testnet_contract() -> str:
+        meta_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "contracts", "deployed-testnet.json")
+        )
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data.get("contractId"):
+                        return str(data["contractId"])
+            except Exception:
+                pass
+        return "predictee.testnet"
+
     DEFAULT_ORACLE_CONTRACT_ID = "predictee.testnet"
 
     def __init__(self, network: str = "mainnet", oracle_contract_id: Optional[str] = None):
@@ -59,7 +74,9 @@ class NEARChainSignatureService:
         self.mpc_root_pubkey = (
             self.MPC_ROOT_PUBKEY_MAINNET if network == "mainnet" else self.MPC_ROOT_PUBKEY_TESTNET
         )
-        self.oracle_contract_id = oracle_contract_id or self.DEFAULT_ORACLE_CONTRACT_ID
+        self.oracle_contract_id = oracle_contract_id or (
+            self._load_deployed_testnet_contract() if network == "testnet" else self.DEFAULT_ORACLE_CONTRACT_ID
+        )
         self._root_point_cache: Dict[str, Tuple[int, int]] = {}
 
     def _get_root_point(self) -> Tuple[int, int]:
@@ -364,6 +381,49 @@ class NEARChainSignatureService:
         }
         intent["explorer_url"] = f"https://polygonscan.com/address/{polygon_addr}"
         intent["near_mpc_explorer_url"] = f"https://nearblocks.io/address/{self.MPC_CONTRACT_ID}"
+        return intent
+
+    def record_onchain_mpc_signature(
+        self,
+        intent: Dict[str, Any],
+        near_tx_hash: str,
+        mpc_result: Optional[Dict[str, Any]] = None,
+        network: str = "testnet"
+    ) -> Dict[str, Any]:
+        """
+        Records a real, wallet-broadcast NEAR Chain Signatures (`v1.signer-prod.testnet` / `v1.signer`)
+        on-chain transaction and decodes the threshold secp256k1 `(big_r, s, recovery_id)` signature.
+        """
+        digest_hex = intent.get("eip712_digest", "0x" + "00" * 32).removeprefix("0x")
+        polygon_addr = intent.get("derived_polygon_address", "0x0000000000000000000000000000000000000000")
+        explorer_base = "https://testnet.nearblocks.io" if network == "testnet" else "https://nearblocks.io"
+
+        big_r_point = ""
+        s_scalar = ""
+        rec_id = 0
+        if isinstance(mpc_result, dict):
+            big_r_point = str(mpc_result.get("big_r", {}).get("affine_point", ""))
+            s_scalar = str(mpc_result.get("s", {}).get("scalar", ""))
+            rec_id = int(mpc_result.get("recovery_id", 0))
+
+        intent["status"] = "MPC_ONCHAIN_SIGNED"
+        intent["execution_mode"] = "LIVE_NEAR_MPC_ONCHAIN"
+        intent["sandbox_not_broadcast"] = False
+        intent["near_tx_hash"] = near_tx_hash
+        intent["near_tx_explorer_url"] = f"{explorer_base}/txns/{near_tx_hash}"
+        intent["clob_order_hash"] = f"0x{digest_hex}"
+        intent["polygon_tx_hash"] = None
+        intent["mpc_signature"] = {
+            "scheme": "Secp256k1",
+            "big_r": big_r_point,
+            "s": s_scalar,
+            "v": 27 + rec_id,
+            "recovery_id": rec_id,
+            "mpc_contract": self.MPC_CONTRACT_ID,
+            "near_tx_hash": near_tx_hash
+        }
+        intent["explorer_url"] = f"https://polygonscan.com/address/{polygon_addr}"
+        intent["near_mpc_explorer_url"] = f"{explorer_base}/address/{self.MPC_CONTRACT_ID}"
         return intent
 
     def build_request_resolution_tx(

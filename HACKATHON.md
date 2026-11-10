@@ -16,6 +16,8 @@
   - `agents` — **Agent Economy:** Autonomous TEE oracle agents that earn escrowed `$NEAR` bounties by resolving subjective inquiries and dispatching cross-contract callbacks.
   - `defi` — **Unstoppable DeFi:** Cross-chain prediction market order preparation and EIP-712 signing on Polygon Polymarket CLOB via NEAR Chain Signatures (`v1.signer`).
 - **Public GitHub Repository:** https://github.com/zhic49280-oss/predictee
+- **Live Deployed NEAR Testnet Contract:** [`predictee-to9sjg.testnet`](https://testnet.nearblocks.io/address/predictee-to9sjg.testnet) (`Deploy Tx: JCpAqiP6VRrQH5ckqSVB8eFUtj2jxsCWx9wAnv1znBop`, `Init Tx: E71kHLMjHnczGmi5cRD9ywkgvSHdA1evjFHBVyzxMA1Z`)
+- **Verified Live NEAR MPC (`v1.signer-prod.testnet`) Tx:** [`28Uwj983fs4zMR3w7Giya57yATyT7PxNF97XLDhSq5oJ`](https://testnet.nearblocks.io/txns/28Uwj983fs4zMR3w7Giya57yATyT7PxNF97XLDhSq5oJ)
 - **3-Minute Demo Walkthrough Script:** See [DEMO_GUIDE.md](./DEMO_GUIDE.md) *(attach recorded 3-minute video URL in the Hackathon submission portal and X post per `Q-012`)*
 - **Public X (Twitter) Demo Post Checklist:**
   - Attach the 3-minute demo video (mandatory for local-runnable demos per `Q-012`)

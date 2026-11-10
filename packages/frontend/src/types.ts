@@ -40,6 +40,9 @@ export interface OracleRequestItem {
   resolvedAt: string | null;
   callbackContract?: string | null;
   callbackMethod?: string | null;
+  nearTxHash?: string | null;
+  txExplorerUrl?: string | null;
+  contractId?: string | null;
   evidenceSources: EvidenceSource[];
   resolution?: OracleResolutionData | null;
 }
@@ -108,4 +111,6 @@ export interface AccountOption {
   derivedPolygonAddress: string;
   nearBalance: string;
   label: string;
+  isWalletSigner?: boolean;
+  walletProvider?: string;
 }

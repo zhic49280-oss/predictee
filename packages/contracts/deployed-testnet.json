@@ -1,0 +1,11 @@
+{
+  "network": "testnet",
+  "contractId": "predictee-to9sjg.testnet",
+  "ownerId": "predictee-to9sjg.testnet",
+  "rpcUrl": "https://rpc.testnet.near.org",
+  "mpcContractId": "v1.signer-prod.testnet",
+  "wasmBytes": 572174,
+  "deployTxHash": "JCpAqiP6VRrQH5ckqSVB8eFUtj2jxsCWx9wAnv1znBop",
+  "explorerUrl": "https://testnet.nearblocks.io/address/predictee-to9sjg.testnet",
+  "deployedAt": "2026-11-10T05:00:26.026Z"
+}

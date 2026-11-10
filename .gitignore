@@ -9,3 +9,5 @@ packages/agent/oracle_state.json
 .agents/
 PROJECT_REVIEW_REPORT.md
 .DS_Store
+*.key.json
+.near-credentials/

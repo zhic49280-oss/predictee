@@ -10,6 +10,11 @@
 [![NEP-297 Events Standard](https://img.shields.io/badge/NEP--297-Standardized%20Events-10B981?style=for-the-badge)](https://nomicon.io/Standards/EventsFormat)
 [![License: MIT](https://img.shields.io/badge/License-MIT-F59E0B?style=for-the-badge)](LICENSE)
 
+> **Live On-Chain Proof (NEAR Testnet):**
+> - **Deployed Contract:** [`predictee-to9sjg.testnet`](https://testnet.nearblocks.io/address/predictee-to9sjg.testnet) (`558.8 KB WASM`, Deploy Tx: `JCpAqiP6VRrQH5ckqSVB8eFUtj2jxsCWx9wAnv1znBop`, Init Tx: `E71kHLMjHnczGmi5cRD9ywkgvSHdA1evjFHBVyzxMA1Z`)
+> - **Live MPC (`v1.signer-prod.testnet`) Sign Tx:** [`28Uwj983fs4zMR3w7Giya57yATyT7PxNF97XLDhSq5oJ`](https://testnet.nearblocks.io/txns/28Uwj983fs4zMR3w7Giya57yATyT7PxNF97XLDhSq5oJ)
+> - **Real Wallet Signing:** Integrated with `@near-wallet-selector` (`Meteor Wallet`, `MyNearWallet`, `HOT Wallet`, `OKX Wallet`) for real popup transaction broadcasting.
+
 ---
 
 ## 📸 Live NEAR AI Cloud TEE Demo Gallery
